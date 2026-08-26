@@ -42,8 +42,8 @@
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/dictado-ai.git
-cd dictado-ai
+git clone https://github.com/marcomarca/dictadoai.git
+cd dictadoai
 ```
 
 ### 2. Configurar el entorno con `uv`
