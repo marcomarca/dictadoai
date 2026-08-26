@@ -16,6 +16,7 @@ from .runtime import AppRuntime
 from .server import WhisperServerManager
 from .workers import InferenceWorker
 from .media_control import MediaManager, PausedMediaTarget
+from .model_downloader import download_whisper_model
 from dataclasses import replace
 
 logger = logging.getLogger(__name__)
@@ -128,10 +129,28 @@ class DictationController:
             return
 
         if not self.settings.paths.model_path.exists():
-            self.runtime.push_status("[ ERROR ]", self.settings.ui.color_paused)
-            self.runtime.push_text(f"No se encontró el modelo en {self.settings.paths.model_path}")
-            logger.error("Falta modelo Whisper en %s", self.settings.paths.model_path)
-            return
+            logger.info("Modelo Whisper no encontrado en %s. Iniciando descarga automática...", self.settings.paths.model_path)
+            self.runtime.push_status("[ DESCARGANDO MODELO ]", self.settings.ui.color_busy)
+            self.runtime.push_text("Descargando modelo Whisper (~830 MB) desde Hugging Face...")
+
+            def on_progress(downloaded: int, total: int, percent: float) -> None:
+                mb_down = downloaded / (1024 * 1024)
+                mb_total = total / (1024 * 1024) if total > 0 else 0
+                self.runtime.push_status(f"[ DESCARGANDO {percent:.0f}% ]", self.settings.ui.color_busy)
+                self.runtime.push_text(f"Descargando modelo: {mb_down:.1f} MB / {mb_total:.1f} MB ({percent:.1f}%)")
+
+            target_file = self.settings.paths.project_root / self.settings.paths.model_relative_path
+            success = download_whisper_model(
+                target_path=target_file,
+                url=self.settings.paths.model_download_url,
+                progress_callback=on_progress,
+            )
+            if not success:
+                self.runtime.push_status("[ ERROR ]", self.settings.ui.color_paused)
+                self.runtime.push_text("Error al descargar modelo desde Hugging Face. Verifica tu conexión a internet.")
+                logger.error("Fallo al descargar modelo Whisper a %s", self.settings.paths.model_path)
+                return
+            self.runtime.push_text("Modelo descargado exitosamente. Continuando inicio...")
 
         device = self.settings.asr.device
         use_gpu = True
@@ -287,6 +306,32 @@ class DictationController:
         self.runtime.push_text(f"Micrófono seleccionado: {device_label}")
         self.runtime.push_level(0.0)
         logger.info("Micrófono seleccionado: key=%s label=%s", device_key, device_label)
+
+    def trigger_model_download(self) -> None:
+        def task():
+            self.runtime.push_status("[ DESCARGANDO MODELO ]", self.settings.ui.color_busy)
+            self.runtime.push_text("Descargando modelo Whisper (~830 MB) desde Hugging Face...")
+
+            def on_progress(downloaded: int, total: int, percent: float) -> None:
+                mb_down = downloaded / (1024 * 1024)
+                mb_total = total / (1024 * 1024) if total > 0 else 0
+                self.runtime.push_status(f"[ DESCARGANDO {percent:.0f}% ]", self.settings.ui.color_busy)
+                self.runtime.push_text(f"Descarga de modelo: {mb_down:.1f} MB / {mb_total:.1f} MB ({percent:.1f}%)")
+
+            target_file = self.settings.paths.project_root / self.settings.paths.model_relative_path
+            success = download_whisper_model(
+                target_path=target_file,
+                url=self.settings.paths.model_download_url,
+                progress_callback=on_progress,
+            )
+            if success:
+                self.runtime.push_status("[ MODELO LISTO ]", self.settings.ui.color_init)
+                self.runtime.push_text("Modelo Whisper descargado y listo.")
+            else:
+                self.runtime.push_status("[ ERROR ]", self.settings.ui.color_paused)
+                self.runtime.push_text("Error descargando el modelo de Hugging Face.")
+
+        threading.Thread(target=task, daemon=True, name="manual-model-download").start()
 
     def shutdown(self) -> None:
         logger.info("Cerrando aplicación")

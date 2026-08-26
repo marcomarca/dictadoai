@@ -25,6 +25,7 @@ class DictationQtApp:
         restart_asr_callback,
         change_mode_callback,
         change_input_device_callback,
+        download_model_callback=None,
     ):
         self.app = app
         self.settings = settings
@@ -38,6 +39,7 @@ class DictationQtApp:
             restart_asr_callback=restart_asr_callback,
             change_mode_callback=change_mode_callback,
             change_input_device_callback=change_input_device_callback,
+            download_model_callback=download_model_callback,
         )
 
         self.poll_timer = QTimer()

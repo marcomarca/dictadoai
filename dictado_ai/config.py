@@ -48,7 +48,8 @@ class PathsConfig:
     project_root: Path
     server_url: str = "http://127.0.0.1:8170"
     server_exe_name: str = "bin/whisper-server.exe"
-    model_relative_path: Path = Path("models") / "ggml-large-v3-turbo-q5_0.bin"
+    model_relative_path: Path = Path("models") / "ggml-large-v3-turbo-q8_0.bin"
+    model_download_url: str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin?download=true"
     debug_audio_dir_name: str = "debug_audio"
 
     @property
@@ -61,7 +62,15 @@ class PathsConfig:
 
     @property
     def model_path(self) -> Path:
-        return self.project_root / self.model_relative_path
+        # Si existe el q8_0, usarlo
+        q8 = self.project_root / self.model_relative_path
+        if q8.exists():
+            return q8
+        # Si existe el q5_0 como alternativa previa, usarlo
+        q5 = self.project_root / "models" / "ggml-large-v3-turbo-q5_0.bin"
+        if q5.exists():
+            return q5
+        return q8
 
     @property
     def logs_dir(self) -> Path:

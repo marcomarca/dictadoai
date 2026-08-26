@@ -26,6 +26,7 @@ class TrayController:
         restart_asr_callback: Callable[[AsrProvider, AsrDevice | None, GroqAsrModel | None], None],
         change_mode_callback: Callable[[], None],
         change_input_device_callback: Callable[[str | None, str], None],
+        download_model_callback: Callable[[], None] | None = None,
     ):
         self.settings = settings
         self.overlay = overlay
@@ -34,6 +35,7 @@ class TrayController:
         self.restart_asr_callback = restart_asr_callback
         self.change_mode_callback = change_mode_callback
         self.change_input_device_callback = change_input_device_callback
+        self.download_model_callback = download_model_callback
         self.tray = QSystemTrayIcon()
         self.icon_active = get_tray_icon("active_green", settings.ui.color_active)
         self.icon_paused = get_tray_icon("paused_gray", "#7B879C")
@@ -133,6 +135,10 @@ class TrayController:
         self.open_env_action = QAction("Configurar API Keys (.env)...", self.menu)
         self.open_env_action.triggered.connect(self.open_env_file)
 
+        if self.download_model_callback:
+            self.download_model_action = QAction("Descargar modelo Whisper local...", self.menu)
+            self.download_model_action.triggered.connect(self.download_model_callback)
+
         self.quit_action = QAction("Salir")
         self.quit_action.triggered.connect(QApplication.quit)
 
@@ -144,6 +150,8 @@ class TrayController:
         self.menu.addMenu(self.mode_menu)
         self.menu.addMenu(self.links_menu)
         self.menu.addAction(self.open_env_action)
+        if self.download_model_callback:
+            self.menu.addAction(self.download_model_action)
         self.menu.addSeparator()
         self.menu.addAction(self.copy_action)
         self.menu.addAction(self.pause_media_action)

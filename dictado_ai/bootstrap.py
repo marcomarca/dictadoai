@@ -44,6 +44,7 @@ def main() -> None:
         restart_asr_callback=controller.change_asr_backend,
         change_mode_callback=controller.setup_hotkeys,
         change_input_device_callback=controller.change_input_device,
+        download_model_callback=controller.trigger_model_download,
     )
     app.aboutToQuit.connect(controller.shutdown)
 
