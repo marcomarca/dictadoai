@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+*.spec
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+bin/
+models/
+.env
+debug_audio/
+.vscode/
+logs/
+logs
+*.zip
+*.log
+logs/dictado_ai.log

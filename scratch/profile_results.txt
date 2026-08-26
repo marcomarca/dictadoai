@@ -1,0 +1,55 @@
+================================================================================
+Module Name                                                  | Time (s)  
+================================================================================
+dictado_ai.controller                                        | 2.4365s
+asr                                                          | 1.2458s
+vad                                                          | 0.9430s
+torch                                                        | 0.9412s
+llm_client                                                   | 0.8939s
+google                                                       | 0.5016s
+openai                                                       | 0.3920s
+                                                             | 0.3706s
+                                                             | 0.3348s
+audio                                                        | 0.2606s
+sounddevice                                                  | 0.2603s
+torch._decomp                                                | 0.1763s
+eval_create_params                                           | 0.1588s
+graders.grader_inputs_param                                  | 0.1548s
+multi_grader                                                 | 0.1522s
+label_model_grader                                           | 0.1493s
+grader_inputs                                                | 0.1483s
+responses.response_input_text                                | 0.1477s
+decomp_utils                                                 | 0.1426s
+torch._export.utils                                          | 0.1420s
+wrappers                                                     | 0.1377s
+torch._higher_order_ops.flat_apply                           | 0.1354s
+batch                                                        | 0.1350s
+torch._decomp.decompositions                                 | 0.1311s
+scipy.io.wavfile                                             | 0.1278s
+torch.nn.functional                                          | 0.1185s
+matlab                                                       | 0.1135s
+_mio                                                         | 0.1120s
+_mio4                                                        | 0.1086s
+scipy.sparse                                                 | 0.1079s
+requests                                                     | 0.1075s
+torch._prims                                                 | 0.1070s
+torch.nn.modules                                             | 0.1064s
+_base                                                        | 0.0973s
+_sputils                                                     | 0.0964s
+scipy._lib._util                                             | 0.0959s
+scipy._lib._array_api                                        | 0.0952s
+torch._higher_order_ops.invoke_subgraph                      | 0.0941s
+_models                                                      | 0.0931s
+torch.utils._debug_mode                                      | 0.0926s
+scipy._lib.array_api_compat                                  | 0.0862s
+client                                                       | 0.0720s
+urllib3                                                      | 0.0588s
+                                                             | 0.0583s
+_interactions.types                                          | 0.0580s
+numpy                                                        | 0.0543s
+_api_client                                                  | 0.0526s
+                                                             | 0.0522s
+module                                                       | 0.0506s
+
+--- DICTADO_AI INTERNAL MODULES ---
+dictado_ai.controller                                        | 2.4365s

@@ -1,0 +1,29 @@
+[project]
+name = "dictado-ai"
+version = "0.1.0"
+description = "Sistema de dictado por voz inteligente para Windows con Whisper (local/online) y formateo LLM"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=1.71.0",
+    "groq>=1.1.2",
+    "numpy>=2.4.4",
+    "onnxruntime>=1.24.4",
+    "openai>=2.31.0",
+    "pyside6>=6.11.0",
+    "python-dotenv>=1.2.2",
+    "pywin32>=311",
+    "requests>=2.33.1",
+    "scipy>=1.17.1",
+    "silero-vad-lite==0.2.1",
+    "sounddevice>=0.5.5",
+    "winrt-windows-foundation>=3.2.1",
+    "winrt-windows-foundation-collections>=3.2.1",
+    "winrt-windows-media-control>=3.2.1",
+]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.22.2",
+]
