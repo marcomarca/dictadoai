@@ -16,6 +16,10 @@ def build() -> None:
     print(f"Iniciando empaquetado de Dictado AI en: {output_bundle_dir}")
     print("=" * 60)
 
+    # 0. Cerrar instancias previas que puedan bloquear archivos en dist/
+    if sys.platform == "win32":
+        os.system("taskkill /F /IM DictadoAI.exe /IM whisper-server.exe >nul 2>&1")
+
     # 1. Comando PyInstaller
     icon_file = project_root / "dictado_ai" / "assets" / "icons" / "app.ico"
     assets_dir = project_root / "dictado_ai" / "assets"
