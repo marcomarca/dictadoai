@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..config import Settings
-from .theme import create_microphone_pixmap, get_app_icon
+from .theme import get_app_icon, get_status_badge_pixmap
 from .widgets import LevelMeter
 
 
@@ -30,9 +30,11 @@ class DictationOverlay(QWidget):
         self.current_status = "[ INICIANDO SISTEMA ]"
         self.current_status_color = self.theme.color_init
         self._user_moved = False
+
         app_icon = get_app_icon()
         if not app_icon.isNull():
             self.setWindowIcon(app_icon)
+
         self._build_ui()
         self._apply_window_flags()
         self.hide()
@@ -50,85 +52,101 @@ class DictationOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
     def _build_ui(self) -> None:
-        self.setFixedSize(self.theme.popup_width, self.theme.popup_height)
+        # Dejar margen para la sombra perimetral
+        self.setFixedSize(self.theme.popup_width + 24, self.theme.popup_height + 24)
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        root.setContentsMargins(12, 12, 12, 12)
 
-        card = QFrame(self)
-        card.setObjectName("card")
+        self.card = QFrame(self)
+        self.card.setObjectName("card")
 
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(10)
+        # Sombra difusa moderna estilo macOS / Windows 11 Fluent
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 160))
+        shadow.setOffset(0, 6)
+        self.card.setGraphicsEffect(shadow)
 
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(16, 14, 16, 14)
+        card_layout.setSpacing(8)
+
+        # Header: Icono oficial de marca + Título/Subtítulo + Hotkey chip
         header = QHBoxLayout()
         header.setSpacing(12)
 
         self.mic_badge = QLabel()
-        self.mic_badge.setFixedSize(34, 34)
-        self.mic_badge.setPixmap(create_microphone_pixmap(34, self.theme.color_active))
+        self.mic_badge.setFixedSize(38, 38)
+        self.mic_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mic_badge.setPixmap(get_status_badge_pixmap(self.current_status, 38))
 
         title_col = QVBoxLayout()
-        title_col.setSpacing(1)
+        title_col.setSpacing(2)
 
         self.status_label = QLabel(self.current_status)
-        self.status_label.setStyleSheet(f"color: {self.theme.color_text_primary}; font-weight: 700; font-size: 14px;")
+        self.status_label.setObjectName("statusLabel")
+        self.status_label.setStyleSheet(f"color: {self.theme.color_init}; font-weight: 700; font-size: 13px; letter-spacing: 0.5px;")
 
         self.subtitle_label = QLabel("Preparando entorno...")
+        self.subtitle_label.setObjectName("subtitleLabel")
         self.subtitle_label.setWordWrap(True)
         self.subtitle_label.setStyleSheet(f"color: {self.theme.color_text_muted}; font-size: 12px;")
 
         title_col.addWidget(self.status_label)
         title_col.addWidget(self.subtitle_label)
-        header.addWidget(self.mic_badge, 0, Qt.AlignmentFlag.AlignTop)
+        header.addWidget(self.mic_badge, 0, Qt.AlignmentFlag.AlignVCenter)
         header.addLayout(title_col, 1)
 
         self.hotkey_chip = QLabel(self.settings.app.hotkey.upper())
-        self.hotkey_chip.setStyleSheet(
-            """
-            QLabel {
-                color: #D7E2F2;
-                background: rgba(255,255,255,0.08);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 10px;
-                padding: 6px 10px;
-                font-size: 11px;
-                font-weight: 600;
-            }
-            """
-        )
-        header.addWidget(self.hotkey_chip, 0, Qt.AlignmentFlag.AlignTop)
+        self.hotkey_chip.setObjectName("hotkeyChip")
+        header.addWidget(self.hotkey_chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
+        # Barra de visualización de audio moderna (ecualizador simétrico)
         self.level_meter = LevelMeter(self.theme)
 
-        self.draft_label = QLabel("Escuchando…")
+        # Texto en tiempo real / borrador transcrito
+        self.draft_label = QLabel("Escuchando tu voz...")
+        self.draft_label.setObjectName("draftLabel")
         self.draft_label.setWordWrap(True)
         self.draft_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.draft_label.setStyleSheet(f"color: {self.theme.color_text_secondary}; font-size: 15px; font-weight: 500;")
-        self.draft_label.setMinimumHeight(52)
+        self.draft_label.setMinimumHeight(44)
+        self.draft_label.setStyleSheet(f"color: {self.theme.color_text_secondary}; font-size: 14px; font-weight: 500;")
 
-        self.footer_label = QLabel("Overlay de dictado modular inspirado en Dragon/Superwhisper")
+        # Barra inferior para estadísticas y estado
+        self.footer_label = QLabel("")
+        self.footer_label.setObjectName("footerLabel")
         self.footer_label.setStyleSheet(f"color: {self.theme.color_text_muted}; font-size: 11px;")
 
         card_layout.addLayout(header)
         card_layout.addWidget(self.level_meter)
         card_layout.addWidget(self.draft_label, 1)
         card_layout.addWidget(self.footer_label)
-        root.addWidget(card)
+        root.addWidget(self.card)
 
         self.setStyleSheet(
             f"""
             QWidget {{
                 background: transparent;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
             }}
             QFrame#card {{
                 background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
+                    x1:0, y1:0, x2:0, y2:1,
                     stop:0 {self.theme.color_card},
                     stop:1 {self.theme.color_card_alt}
                 );
                 border: 1px solid {self.theme.color_border};
                 border-radius: {self.theme.popup_corner_radius}px;
+            }}
+            QLabel#hotkeyChip {{
+                color: #E2E8F0;
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-bottom: 2px solid rgba(255, 255, 255, 0.28);
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-weight: 600;
             }}
             """
         )
@@ -142,7 +160,7 @@ class DictationOverlay(QWidget):
         geo = screen.availableGeometry()
         x = geo.x() + geo.width() - self.width() - self.theme.popup_margin_right
         y = geo.y() + self.theme.popup_margin_top
-        
+
         new_pos = QPoint(x, y)
         if self.pos() != new_pos:
             self.move(new_pos)
@@ -159,14 +177,16 @@ class DictationOverlay(QWidget):
         self.current_status_color = color
         accent = color or self.theme.color_active
         self.status_label.setText(text)
-        self.status_label.setStyleSheet(f"color: {accent}; font-weight: 700; font-size: 14px;")
-        self.mic_badge.setPixmap(create_microphone_pixmap(34, accent))
-        
-        # Limpiar estadísticas al empezar a grabar o si hay error
-        if "[ GRABANDO ]" in text or "[ ERROR" in text:
+        self.status_label.setStyleSheet(f"color: {accent}; font-weight: 700; font-size: 13px; letter-spacing: 0.5px;")
+
+        # Actualizar icono oficial correspondiente al estado
+        badge_pixmap = get_status_badge_pixmap(text, 38)
+        if not badge_pixmap.isNull():
+            self.mic_badge.setPixmap(badge_pixmap)
+
+        if "[ GRABANDO" in text or "[ ERROR" in text:
             self.clear_stats()
-        elif "[ PAUSADO ]" in text and time.time() >= self.force_preview_until:
-            # Si entramos en pausa y NO estamos en los 3 segundos de gracia, limpiamos
+        elif "[ PAUSADO" in text and time.time() >= self.force_preview_until:
             self.clear_stats()
 
     def set_info(self, text: str) -> None:
@@ -175,27 +195,24 @@ class DictationOverlay(QWidget):
     def set_draft(self, text: str) -> None:
         if text:
             self.draft_label.setText(text)
-            self.draft_label.setStyleSheet(f"color: {self.theme.color_text_primary}; font-size: 16px; font-weight: 600;")
+            self.draft_label.setStyleSheet(f"color: {self.theme.color_text_primary}; font-size: 15px; font-weight: 600;")
         else:
-            self.draft_label.setText("Escuchando…")
-            self.draft_label.setStyleSheet(f"color: {self.theme.color_text_secondary}; font-size: 15px; font-weight: 500;")
+            self.draft_label.setText("Escuchando tu voz...")
+            self.draft_label.setStyleSheet(f"color: {self.theme.color_text_secondary}; font-size: 14px; font-weight: 500;")
 
     def set_level(self, level: float) -> None:
         self.level_meter.set_level(level)
 
     def set_stats(self, wpm: float, time_saved_sec: float) -> None:
-        # Formatear el tiempo ahorrado
         if time_saved_sec < 60:
             time_str = f"{int(time_saved_sec)} seg"
         else:
             time_str = f"{time_saved_sec / 60:.1f} min"
-        
-        stats_text = f"Velocidad: {int(wpm)} WPM | Ahorro: {time_str}"
+
+        stats_text = f"⚡ {int(wpm)} WPM  ·  ⏱ Ahorro: {time_str}"
         self.footer_label.setText(stats_text)
-        self.footer_label.setStyleSheet(f"color: {self.theme.color_active}; font-weight: 600; font-size: 12px;")
-        
-        # Activar visibilidad temporal para que el usuario pueda leerlo
-        self.preview(3.0)
+        self.footer_label.setStyleSheet(f"color: {self.theme.color_active}; font-weight: 600; font-size: 11px;")
+        self.preview(3.5)
 
     def clear_stats(self) -> None:
         self.footer_label.setText("")
@@ -209,10 +226,8 @@ class DictationOverlay(QWidget):
             return True
         if time.time() < self.force_preview_until:
             return True
-        # Solo ocultamos si ya estamos en pausa definitiva
         if "[ PAUSADO ]" in self.current_status:
             return False
-        # En cualquier otro caso (Procesando, Inicializando, etc.) lo mantenemos visible
         return True
 
     def show_overlay(self) -> None:
@@ -226,11 +241,9 @@ class DictationOverlay(QWidget):
 
         if should:
             if not is_vis:
-                # logger.debug("Overlay: Mostrando por cambio de estado")
                 self.show_overlay()
             else:
                 self.reposition()
         else:
             if is_vis:
-                # logger.debug("Overlay: Ocultando por cambio de estado")
                 self.hide()

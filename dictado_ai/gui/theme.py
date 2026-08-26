@@ -30,6 +30,52 @@ def get_tray_icon(name: str, fallback_color: str = "#7B879C") -> QIcon:
     return create_tray_icon(fallback_color)
 
 
+def get_badge_pixmap(name: str = "app.png", size: int = 42) -> QPixmap:
+    """Carga un icono de marca y lo escala con suavizado de alta calidad."""
+    path = get_asset_icon_path(name)
+    if path.exists():
+        pm = QPixmap(str(path))
+        if not pm.isNull():
+            return pm.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+    return QPixmap()
+
+
+def get_status_badge_pixmap(status_text: str, size: int = 42) -> QPixmap:
+    """Retorna el icono oficial correspondiente al estado actual del sistema."""
+    st = (status_text or "").upper()
+    if "[ GRABANDO" in st or "[ ACTIVO" in st:
+        pm = get_badge_pixmap("tray/active_green.ico", size)
+        if not pm.isNull():
+            return pm
+    elif "[ PROCESANDO" in st or "[ DESCARGANDO" in st or "[ LLM" in st or "[ TRANSCRIBIENDO" in st:
+        pm = get_badge_pixmap("tray/busy_orange.ico", size)
+        if not pm.isNull():
+            return pm
+    elif "[ INICIANDO" in st or "[ PRECALENTANDO" in st:
+        pm = get_badge_pixmap("tray/init_blue.ico", size)
+        if not pm.isNull():
+            return pm
+    elif "[ ERROR" in st:
+        pm = get_badge_pixmap("tray/paused_red_optional.ico", size)
+        if not pm.isNull():
+            return pm
+    elif "[ PAUSADO" in st:
+        pm = get_badge_pixmap("tray/paused_gray.ico", size)
+        if not pm.isNull():
+            return pm
+
+    # Fallback principal: icono oficial app.png
+    app_pm = get_badge_pixmap("app.png", size)
+    if not app_pm.isNull():
+        return app_pm
+    return create_microphone_pixmap(size, "#10B981")
+
+
 def create_microphone_pixmap(size: int, accent: str) -> QPixmap:
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)

@@ -319,24 +319,24 @@ class AppConfig:
 
 @dataclass(frozen=True)
 class UiTheme:
-    popup_width: int = 560
-    popup_height: int = 176
-    popup_margin_top: int = 20
-    popup_margin_right: int = 24
-    popup_corner_radius: int = 22
-    color_bg: str = "#0B1020"
-    color_card: str = "#11192B"
-    color_card_alt: str = "#182238"
-    color_border: str = "rgba(255,255,255,0.08)"
+    popup_width: int = 520
+    popup_height: int = 152
+    popup_margin_top: int = 24
+    popup_margin_right: int = 28
+    popup_corner_radius: int = 18
+    color_bg: str = "#0D1117"
+    color_card: str = "#0F172A"
+    color_card_alt: str = "#1E293B"
+    color_border: str = "rgba(255, 255, 255, 0.12)"
     color_text_primary: str = "#F8FAFC"
-    color_text_secondary: str = "#A7B2C9"
-    color_text_muted: str = "#7D89A3"
-    color_active: str = "#35D07F"
-    color_busy: str = "#F6A53A"
-    color_paused: str = "#FF6467"
-    color_init: str = "#60A5FA"
-    color_level: str = "#5EEAD4"
-    color_level_bg: str = "rgba(255,255,255,0.08)"
+    color_text_secondary: str = "#CBD5E1"
+    color_text_muted: str = "#94A3B8"
+    color_active: str = "#10B981"
+    color_busy: str = "#F59E0B"
+    color_paused: str = "#EF4444"
+    color_init: str = "#3B82F6"
+    color_level: str = "#10B981"
+    color_level_bg: str = "rgba(255, 255, 255, 0.08)"
 
 
 @dataclass
