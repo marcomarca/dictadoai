@@ -76,9 +76,9 @@ class DictationOverlay(QWidget):
         header.setSpacing(12)
 
         self.mic_badge = QLabel()
-        self.mic_badge.setFixedSize(38, 38)
+        self.mic_badge.setFixedSize(42, 42)
         self.mic_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mic_badge.setPixmap(get_status_badge_pixmap(self.current_status, 38))
+        self.mic_badge.setPixmap(get_status_badge_pixmap(self.current_status, 42, 2.0))
 
         title_col = QVBoxLayout()
         title_col.setSpacing(2)
@@ -179,8 +179,8 @@ class DictationOverlay(QWidget):
         self.status_label.setText(text)
         self.status_label.setStyleSheet(f"color: {accent}; font-weight: 700; font-size: 13px; letter-spacing: 0.5px;")
 
-        # Actualizar icono oficial correspondiente al estado
-        badge_pixmap = get_status_badge_pixmap(text, 38)
+        dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 2.0
+        badge_pixmap = get_status_badge_pixmap(text, 42, dpr)
         if not badge_pixmap.isNull():
             self.mic_badge.setPixmap(badge_pixmap)
 
