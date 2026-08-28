@@ -113,6 +113,11 @@ def build() -> None:
     dst_logs = output_bundle_dir / "logs"
     dst_logs.mkdir(parents=True, exist_ok=True)
 
+    # 7. Limpiar directorio temporal build/
+    if build_dir.exists():
+        print(f"Limpiando directorio temporal {build_dir}...")
+        shutil.rmtree(build_dir, ignore_errors=True)
+
     print("=" * 60)
     print(f"¡Empaquetado finalizado con éxito!")
     print(f"Ejecutable disponible en: {output_bundle_dir / 'DictadoAI.exe'}")

@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from ..audio_devices import list_input_devices
+from ..autostart import is_autostart_enabled, set_autostart
 from ..config import Settings, LlmProvider, AsrDevice, AsrProvider, DictationMode, GroqAsrModel
 from .overlay import DictationOverlay
 from .theme import get_tray_icon
@@ -125,6 +126,11 @@ class TrayController:
         self.preview_action = QAction("Mostrar popup")
         self.preview_action.triggered.connect(lambda: self.overlay.preview(5.0))
 
+        self.autostart_action = QAction("Iniciar con Windows", self.menu)
+        self.autostart_action.setCheckable(True)
+        self.autostart_action.setChecked(is_autostart_enabled())
+        self.autostart_action.triggered.connect(self.toggle_autostart)
+
         self.copy_action = QAction("Auto-copiar al portapapeles", self.menu)
         self.copy_action.setCheckable(True)
         self.copy_action.setChecked(self.settings.app.auto_copy_clipboard)
@@ -132,6 +138,9 @@ class TrayController:
 
         self.pause_media_action = QAction("Auto-pausar multimedia", self.menu)
         self.pause_media_action.setCheckable(True)
+        self.pause_media_action.setChecked(self.settings.app.auto_pause_media)
+        self.pause_media_action.triggered.connect(self.toggle_auto_pause_media)
+
         self.open_env_action = QAction("Configurar API Keys (.env)...", self.menu)
         self.open_env_action.triggered.connect(self.open_env_file)
 
@@ -153,6 +162,7 @@ class TrayController:
         if self.download_model_callback:
             self.menu.addAction(self.download_model_action)
         self.menu.addSeparator()
+        self.menu.addAction(self.autostart_action)
         self.menu.addAction(self.copy_action)
         self.menu.addAction(self.pause_media_action)
         self.menu.addSeparator()
@@ -234,6 +244,11 @@ class TrayController:
             )
             missing_action.setEnabled(False)
             self.microphone_menu.addAction(missing_action)
+
+    def toggle_autostart(self, checked: bool) -> None:
+        success = set_autostart(checked)
+        if not success:
+            self.autostart_action.setChecked(is_autostart_enabled())
 
     def toggle_auto_copy(self, checked: bool) -> None:
         # Note: AppConfig is frozen, so we manipulate settings directly if it was not frozen

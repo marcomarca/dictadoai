@@ -6,6 +6,7 @@ import threading
 
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
+from .autostart import setup_default_autostart
 from .config import Settings
 from .controller import DictationController
 from .gui.app import DictationQtApp
@@ -19,6 +20,7 @@ def main() -> None:
 
     settings = Settings.default()
     configure_logging(settings.paths.logs_dir)
+    setup_default_autostart()
 
     if settings.app.save_debug_audio:
         settings.paths.debug_audio_dir.mkdir(parents=True, exist_ok=True)
