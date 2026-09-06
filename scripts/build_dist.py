@@ -23,6 +23,7 @@ def build() -> None:
     # 1. Comando PyInstaller
     icon_file = project_root / "dictado_ai" / "assets" / "icons" / "app.ico"
     assets_dir = project_root / "dictado_ai" / "assets"
+    web_dir = project_root / "dictado_ai" / "gui" / "web"
 
     cmd = [
         sys.executable,
@@ -34,6 +35,7 @@ def build() -> None:
         "--name", "DictadoAI",
         f"--icon={icon_file}",
         f"--add-data={assets_dir};dictado_ai/assets",
+        f"--add-data={web_dir};dictado_ai/gui/web",
         "--collect-all", "silero_vad_lite",
         "--collect-all", "onnxruntime",
         "--collect-all", "sounddevice",
@@ -41,6 +43,9 @@ def build() -> None:
         "--collect-all", "google.genai",
         "--collect-all", "groq",
         "--collect-all", "openai",
+        "--collect-all", "PySide6.QtWebEngineWidgets",
+        "--collect-all", "PySide6.QtWebEngineCore",
+        "--collect-all", "PySide6.QtWebChannel",
         "--hidden-import", "winrt.windows.foundation",
         "--hidden-import", "winrt.windows.foundation.collections",
         "--hidden-import", "winrt.windows.media.control",
@@ -96,7 +101,7 @@ def build() -> None:
             encoding="utf-8",
         )
 
-    # 5. Copiar assets de iconos
+    # 5. Copiar assets de iconos y frontend web
     src_assets = project_root / "dictado_ai" / "assets"
     dst_assets_internal = output_bundle_dir / "_internal" / "dictado_ai" / "assets"
     dst_assets_root = output_bundle_dir / "dictado_ai" / "assets"
@@ -108,6 +113,18 @@ def build() -> None:
         if dst_assets_root.exists():
             shutil.rmtree(dst_assets_root)
         shutil.copytree(src_assets, dst_assets_root)
+
+    src_web = project_root / "dictado_ai" / "gui" / "web"
+    dst_web_internal = output_bundle_dir / "_internal" / "dictado_ai" / "gui" / "web"
+    dst_web_root = output_bundle_dir / "dictado_ai" / "gui" / "web"
+    if src_web.exists():
+        print(f"Copiando frontend web a la distribución...")
+        if dst_web_internal.exists():
+            shutil.rmtree(dst_web_internal)
+        shutil.copytree(src_web, dst_web_internal)
+        if dst_web_root.exists():
+            shutil.rmtree(dst_web_root)
+        shutil.copytree(src_web, dst_web_root)
 
     # 6. Crear carpeta logs/
     dst_logs = output_bundle_dir / "logs"

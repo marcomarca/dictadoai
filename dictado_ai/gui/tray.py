@@ -28,6 +28,7 @@ class TrayController:
         change_mode_callback: Callable[[], None],
         change_input_device_callback: Callable[[str | None, str], None],
         download_model_callback: Callable[[], None] | None = None,
+        open_panel_callback: Callable[[], None] | None = None,
     ):
         self.settings = settings
         self.overlay = overlay
@@ -37,6 +38,7 @@ class TrayController:
         self.change_mode_callback = change_mode_callback
         self.change_input_device_callback = change_input_device_callback
         self.download_model_callback = download_model_callback
+        self.open_panel_callback = open_panel_callback
         self.tray = QSystemTrayIcon()
         self.icon_active = get_tray_icon("active_green", settings.ui.color_active)
         self.icon_paused = get_tray_icon("paused_gray", "#7B879C")
@@ -152,6 +154,10 @@ class TrayController:
         self.quit_action.triggered.connect(QApplication.quit)
 
         self.menu.addAction(self.status_action)
+        if self.open_panel_callback:
+            self.panel_action = QAction("Panel de Control (Super Whisper)...", self.menu)
+            self.panel_action.triggered.connect(self.open_panel_callback)
+            self.menu.addAction(self.panel_action)
         self.menu.addSeparator()
         self.menu.addMenu(self.microphone_menu)
         self.menu.addMenu(self.provider_menu)
@@ -176,10 +182,12 @@ class TrayController:
         self.tray.show()
 
     def on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        if reason in (
-            QSystemTrayIcon.ActivationReason.Trigger,
-            QSystemTrayIcon.ActivationReason.DoubleClick,
-        ):
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            if self.open_panel_callback:
+                self.open_panel_callback()
+            else:
+                self.toggle_callback()
+        elif reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.toggle_callback()
 
     def set_provider(self, provider: LlmProvider) -> None:

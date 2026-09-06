@@ -95,6 +95,39 @@ class HistoryManager:
                 logger.error("Error al leer historial: %s", e)
                 return []
 
+    def delete_entry(self, entry_id: str) -> bool:
+        """Elimina una entrada por su ID."""
+        if not self.history_file.exists():
+            return False
+
+        with self._lock:
+            try:
+                with open(self.history_file, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+
+                new_lines = []
+                deleted = False
+                for line in lines:
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    try:
+                        data = json.loads(line_str)
+                        if data.get("id") == entry_id:
+                            deleted = True
+                            continue
+                    except Exception:
+                        pass
+                    new_lines.append(line)
+
+                if deleted:
+                    with open(self.history_file, "w", encoding="utf-8") as f:
+                        f.writelines(new_lines)
+                return deleted
+            except Exception as e:
+                logger.error("Error al eliminar entrada del historial: %s", e)
+                return False
+
     def clear(self) -> bool:
         """Limpia todo el historial (útil para pruebas o reseteo)."""
         with self._lock:
