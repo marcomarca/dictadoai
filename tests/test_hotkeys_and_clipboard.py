@@ -48,7 +48,7 @@ class TestHotkeyAndPasteSanitization(unittest.TestCase):
     ):
         mock_wait_mod.return_value = True
         mock_force_mod.return_value = True
-        mock_send_input.return_value = 4
+        mock_send_input.return_value = 1
         mock_release_paste.return_value = True
 
         res = send_paste_command(retries=0, delay=0.01)
@@ -56,7 +56,7 @@ class TestHotkeyAndPasteSanitization(unittest.TestCase):
         self.assertTrue(res)
         mock_wait_mod.assert_called_once()
         mock_force_mod.assert_called_once()
-        mock_send_input.assert_called_once()
+        self.assertEqual(mock_send_input.call_count, 4)
         # El saneamiento posterior debe ser llamado siempre
         mock_release_paste.assert_called_once()
 
@@ -248,6 +248,45 @@ class TestInferenceWorkerStrictValidation(unittest.TestCase):
         mock_set_clip.assert_called_once_with("Hola mundo ", exclude_from_history=True)
         mock_paste.assert_called_once()
         self.assertIn("Hola mundo", self.runtime.state._context_history)
+
+        recent = self.worker.history_manager.get_recent(limit=1)
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0].text, "Hola mundo")
+        self.assertTrue(recent[0].paste_success)
+
+    @patch("dictado_ai.workers.send_paste_command")
+    @patch("dictado_ai.workers.set_clipboard_text")
+    def test_worker_falls_back_to_clipboard_and_records_history_on_paste_failure(self, mock_set_clip, mock_paste):
+        self.mock_asr.transcribe.return_value = ("Texto de prueba", "Texto de prueba")
+        mock_paste.return_value = False  # Pegado falló
+
+        self.runtime.final_queue.put({
+            "utterance_id": 4,
+            "audio": np.zeros(16000, dtype=np.float32),
+            "prompt": ""
+        })
+
+        def stop_after_one():
+            import time
+            time.sleep(0.15)
+            self.runtime.stop_event.set()
+
+        import threading
+        t = threading.Thread(target=stop_after_one)
+        t.start()
+        self.worker.run()
+        t.join()
+
+        # Debe guardar en historial con paste_success=False
+        recent = self.worker.history_manager.get_recent(limit=1)
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0].text, "Texto de prueba")
+        self.assertFalse(recent[0].paste_success)
+
+        # Debe haber emitido mensaje de rescate a ui_queue con kind="clipboard"
+        clipboard_msgs = [msg for msg in list(self.runtime.ui_queue.queue) if msg.kind == "clipboard"]
+        self.assertTrue(len(clipboard_msgs) >= 1)
+        self.assertEqual(clipboard_msgs[-1].text, "Texto de prueba")
 
 
 if __name__ == "__main__":

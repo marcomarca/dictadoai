@@ -9,6 +9,7 @@ from datetime import datetime
 import numpy as np
 
 from .hotkeys import set_clipboard_text, send_paste_command, ClipboardGuard
+from .history import HistoryManager, HistoryEntry
 import time
 
 from .asr import AsrClientRouter
@@ -25,6 +26,7 @@ class InferenceWorker:
         self.runtime = runtime
         self.asr_client = asr_client
         self.llm_client = llm_client
+        self.history_manager = HistoryManager(self.settings.paths.history_file)
 
     def run(self) -> None:
         while not self.runtime.stop_event.is_set():
@@ -84,24 +86,42 @@ class InferenceWorker:
                         paste_ok = send_paste_command()
                     
                     self.runtime.state.register_confirmed_text(cleaned_text)
-                    if paste_ok:
-                        self.runtime.push_text(f"Pegado enviado: {cleaned_text}")
-                    else:
-                        self.runtime.push_text(f"Copiado al portapapeles; pegado automático falló: {cleaned_text}")
-                        if must_restore:
-                            self.runtime.push_clipboard(cleaned_text)
-                    
-                    if self.settings.app.auto_copy_clipboard:
-                        self.runtime.push_clipboard(cleaned_text)
 
                     # Calcular estadísticas
                     duration_sec = len(audio_data) / self.settings.audio.sample_rate
                     words = re.findall(r'\w+', cleaned_text)
                     word_count = len(words)
+                    wpm = (word_count / duration_sec) * 60 if (duration_sec > 0 and word_count > 0) else 0.0
+
+                    # Persistir inmediatamente en el historial local anti-pérdida
+                    try:
+                        timestamp_str = datetime.now().isoformat()
+                        entry = HistoryEntry(
+                            id=f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_u{utterance_id}",
+                            timestamp=timestamp_str,
+                            text=cleaned_text,
+                            raw_asr=text_original_debug,
+                            word_count=word_count,
+                            duration_sec=round(duration_sec, 2),
+                            wpm=round(wpm, 1),
+                            paste_success=paste_ok,
+                            provider=self.settings.active_provider.value if hasattr(self.settings.active_provider, "value") else str(self.settings.active_provider),
+                        )
+                        self.history_manager.append_entry(entry)
+                    except Exception as e:
+                        logger.error("Error al registrar entrada en historial: %s", e)
+
+                    if paste_ok:
+                        self.runtime.push_text(f"Pegado enviado: {cleaned_text}")
+                    else:
+                        self.runtime.push_text(f"Pegado falló (guardado en portapapeles e historial): {cleaned_text}")
+                        # Fallback obligatorio: asegurar que el texto quede en el portapapeles para pegado manual
+                        self.runtime.push_clipboard(cleaned_text)
                     
+                    if self.settings.app.auto_copy_clipboard:
+                        self.runtime.push_clipboard(cleaned_text)
+
                     if duration_sec > 0 and word_count > 0:
-                        wpm = (word_count / duration_sec) * 60
-                        # Tiempo que le tomaría escribirlo manualmente (en segundos)
                         typing_speed = self.settings.app.typing_speed_wpm or 40
                         typing_time_sec = (word_count / typing_speed) * 60
                         time_saved_sec = typing_time_sec - duration_sec

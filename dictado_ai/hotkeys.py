@@ -258,23 +258,18 @@ def release_paste_keys() -> bool:
     return True
 
 
+def _send_single_key(vk: int, flags: int = 0) -> bool:
+    """Envía un único evento de teclado (DOWN o UP)."""
+    ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=flags, time=0, dwExtraInfo=0)
+    inp = INPUT(type=INPUT_KEYBOARD, ii=INPUT_I(ki=ki))
+    buf = (INPUT * 1)(inp)
+    ctypes.set_last_error(0)
+    sent = user32.SendInput(1, buf, ctypes.sizeof(INPUT))
+    return sent == 1
+
+
 def send_paste_command(retries: int = 1, delay: float = 0.08) -> bool:
-    """Simula Ctrl+V usando SendInput con saneamiento bidireccional previo y posterior."""
-    cmds = [
-        (VK_CONTROL, 0),                       # Ctrl Down
-        (VK_V, 0),                             # V Down
-        (VK_V, KEYEVENTF_KEYUP),               # V Up
-        (VK_CONTROL, KEYEVENTF_KEYUP),         # Ctrl Up
-    ]
-
-    inputs = []
-    for vk, flags in cmds:
-        ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=flags, time=0, dwExtraInfo=0)
-        inputs.append(INPUT(type=INPUT_KEYBOARD, ii=INPUT_I(ki=ki)))
-
-    n = len(inputs)
-    buffer = (INPUT * n)(*inputs)
-
+    """Simula Ctrl+V usando SendInput con pulsaciones escalonadas y sostenidas."""
     success = False
     for attempt in range(retries + 1):
         try:
@@ -283,19 +278,26 @@ def send_paste_command(retries: int = 1, delay: float = 0.08) -> bool:
             force_release_modifier_keys()
             time.sleep(0.04)
 
-            # 2. Inyección de Ctrl+V
-            ctypes.set_last_error(0)
-            sent = user32.SendInput(n, buffer, ctypes.sizeof(INPUT))
-            err = ctypes.get_last_error()
+            # 2. Inyección escalonada de Ctrl+V con sostenimiento
+            ok_ctrl_down = _send_single_key(VK_CONTROL, 0)
+            time.sleep(0.025)
 
-            if sent == n:
-                logger.info("Ctrl+V enviado por SendInput. attempt=%d sent=%d", attempt + 1, sent)
+            ok_v_down = _send_single_key(VK_V, 0)
+            time.sleep(0.030)
+
+            ok_v_up = _send_single_key(VK_V, KEYEVENTF_KEYUP)
+            time.sleep(0.025)
+
+            ok_ctrl_up = _send_single_key(VK_CONTROL, KEYEVENTF_KEYUP)
+
+            if ok_ctrl_down and ok_v_down and ok_v_up and ok_ctrl_up:
+                logger.info("Ctrl+V enviado escalonadamente por SendInput. attempt=%d", attempt + 1)
                 success = True
                 break
 
             logger.warning(
-                "SendInput no envió todos los eventos de Ctrl+V. attempt=%d requested=%d sent=%d last_error=%d",
-                attempt + 1, n, sent, err,
+                "SendInput falló en pasos escalonados de Ctrl+V. attempt=%d",
+                attempt + 1,
             )
         finally:
             # 3. Saneamiento posterior: barrido explícito de KEYUP para VK_V y VK_CONTROL
@@ -363,8 +365,8 @@ class ClipboardGuard:
         if not self.enabled:
             return
             
-        # Pequeña pausa para que la app destino procese el Pegado antes de restaurar
-        time.sleep(0.08)
+        # Ventana de gracia extendida (350ms) para que la app destino procese el Pegado antes de restaurar
+        time.sleep(0.35)
 
         for attempt in range(5):
             try:
