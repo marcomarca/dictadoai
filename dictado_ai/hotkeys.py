@@ -76,7 +76,14 @@ user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
 user32.UnhookWindowsHookEx.restype = wintypes.BOOL
 
 user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, ctypes.c_uint, ctypes.c_uint]
+user32.GetMessageW.restype = ctypes.c_int
 user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]
+user32.PeekMessageW.restype = wintypes.BOOL
+user32.PostThreadMessageW.argtypes = [wintypes.DWORD, ctypes.c_uint, WPARAM, LPARAM]
+user32.PostThreadMessageW.restype = wintypes.BOOL
+
+kernel32.GetCurrentThreadId.argtypes = []
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
 
 user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
 user32.SendInput.restype = wintypes.UINT
@@ -90,6 +97,8 @@ WM_KEYDOWN = 0x0100
 WM_KEYUP = 0x0101
 WM_SYSKEYDOWN = 0x0104
 WM_SYSKEYUP = 0x0105
+WM_QUIT = 0x0012
+PM_NOREMOVE = 0x0000
 PM_REMOVE = 0x0001
 INPUT_KEYBOARD = 1
 KEYEVENTF_KEYUP = 0x0002
@@ -135,30 +144,36 @@ MODIFIER_RELEASE_VKS = (
 
 # --- Utilidades de Inyección ---
 
-def set_clipboard_text(text: str, exclude_from_history: bool = True) -> None:
+def set_clipboard_text(text: str, exclude_from_history: bool = True, max_retries: int = 5) -> bool:
     """Pone texto en el portapapeles con opción de excluirlo del historial de Windows."""
-    try:
-        win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        
-        # 1. Poner el texto Unicode
-        win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
-        
-        # 2. Metadatos para excluir del historial y la nube (Win+V)
-        if exclude_from_history:
-            fmt_history = win32clipboard.RegisterClipboardFormat("CanIncludeInClipboardHistory")
-            fmt_cloud = win32clipboard.RegisterClipboardFormat("CanUploadToCloudClipboard")
-            
-            # 0 como DWORD (4 bytes)
-            data_no = struct.pack("I", 0)
-            win32clipboard.SetClipboardData(fmt_history, data_no)
-            win32clipboard.SetClipboardData(fmt_cloud, data_no)
-            
-        win32clipboard.CloseClipboard()
-    except Exception as e:
-        logger.error("Error al manipular portapapeles: %s", e)
-        try: win32clipboard.CloseClipboard()
-        except: pass
+    for attempt in range(max_retries):
+        try:
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                
+                # 1. Poner el texto Unicode
+                win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
+                
+                # 2. Metadatos para excluir del historial y la nube (Win+V)
+                if exclude_from_history:
+                    fmt_history = win32clipboard.RegisterClipboardFormat("CanIncludeInClipboardHistory")
+                    fmt_cloud = win32clipboard.RegisterClipboardFormat("CanUploadToCloudClipboard")
+                    
+                    # 0 como DWORD (4 bytes)
+                    data_no = struct.pack("I", 0)
+                    win32clipboard.SetClipboardData(fmt_history, data_no)
+                    win32clipboard.SetClipboardData(fmt_cloud, data_no)
+                    
+                return True
+            finally:
+                win32clipboard.CloseClipboard()
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.015)
+            else:
+                logger.error("Error al manipular portapapeles tras %d reintentos: %s", max_retries, e)
+    return False
 
 def _is_key_down(vk: int) -> bool:
     return bool(user32.GetAsyncKeyState(vk) & 0x8000)
@@ -218,8 +233,33 @@ def force_release_modifier_keys() -> bool:
     return True
 
 
+PASTE_CLEANUP_VKS = (
+    VK_V,
+    VK_LCONTROL, VK_RCONTROL, VK_CONTROL,
+)
+
+
+def release_paste_keys() -> bool:
+    """Emite un barrido explícito de KEYEVENTF_KEYUP para VK_V y VK_CONTROL."""
+    inputs = []
+    for vk in PASTE_CLEANUP_VKS:
+        ki = KEYBDINPUT(wVk=vk, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
+        inputs.append(INPUT(type=INPUT_KEYBOARD, ii=INPUT_I(ki=ki)))
+
+    n = len(inputs)
+    buffer = (INPUT * n)(*inputs)
+
+    ctypes.set_last_error(0)
+    sent = user32.SendInput(n, buffer, ctypes.sizeof(INPUT))
+    err = ctypes.get_last_error()
+    if sent != n:
+        logger.warning("No se pudieron liberar todas las teclas de pegado. sent=%d last_error=%d", sent, err)
+        return False
+    return True
+
+
 def send_paste_command(retries: int = 1, delay: float = 0.08) -> bool:
-    """Simula Ctrl+V usando SendInput y reporta si Windows aceptó la inyección."""
+    """Simula Ctrl+V usando SendInput con saneamiento bidireccional previo y posterior."""
     cmds = [
         (VK_CONTROL, 0),                       # Ctrl Down
         (VK_V, 0),                             # V Down
@@ -235,30 +275,37 @@ def send_paste_command(retries: int = 1, delay: float = 0.08) -> bool:
     n = len(inputs)
     buffer = (INPUT * n)(*inputs)
 
+    success = False
     for attempt in range(retries + 1):
-        # Dos pasos distintos:
-        # 1. esperar a que el usuario suelte físicamente Ctrl/Alt/Shift/Win;
-        # 2. emitir KEYUP para limpiar estados lógicos atascados, sobre todo Alt.
-        wait_for_modifier_keys_released()
-        force_release_modifier_keys()
-        time.sleep(0.04)
+        try:
+            # 1. Saneamiento previo: asegurar liberación física y lógica de modificadores
+            wait_for_modifier_keys_released()
+            force_release_modifier_keys()
+            time.sleep(0.04)
 
-        ctypes.set_last_error(0)
-        sent = user32.SendInput(n, buffer, ctypes.sizeof(INPUT))
-        err = ctypes.get_last_error()
+            # 2. Inyección de Ctrl+V
+            ctypes.set_last_error(0)
+            sent = user32.SendInput(n, buffer, ctypes.sizeof(INPUT))
+            err = ctypes.get_last_error()
 
-        if sent == n:
-            logger.info("Ctrl+V enviado por SendInput. attempt=%d sent=%d", attempt + 1, sent)
-            return True
+            if sent == n:
+                logger.info("Ctrl+V enviado por SendInput. attempt=%d sent=%d", attempt + 1, sent)
+                success = True
+                break
 
-        logger.warning(
-            "SendInput no envió todos los eventos de Ctrl+V. attempt=%d requested=%d sent=%d last_error=%d",
-            attempt + 1, n, sent, err,
-        )
+            logger.warning(
+                "SendInput no envió todos los eventos de Ctrl+V. attempt=%d requested=%d sent=%d last_error=%d",
+                attempt + 1, n, sent, err,
+            )
+        finally:
+            # 3. Saneamiento posterior: barrido explícito de KEYUP para VK_V y VK_CONTROL
+            time.sleep(0.02)
+            release_paste_keys()
+
         if attempt < retries:
             time.sleep(delay)
 
-    return False
+    return success
 
 
 def send_media_play_pause_key() -> bool:
@@ -283,51 +330,61 @@ class ClipboardGuard:
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
         self.backup = {}
+        self._was_empty = False
 
     def __enter__(self):
         if not self.enabled:
             return self
             
-        try:
-            win32clipboard.OpenClipboard()
-            # Iterar todos los formatos disponibles y guardar su contenido
-            fmt = win32clipboard.EnumClipboardFormats(0)
-            while fmt:
+        for attempt in range(5):
+            try:
+                win32clipboard.OpenClipboard()
                 try:
-                    data = win32clipboard.GetClipboardData(fmt)
-                    # Solo guardamos si el dato es serializable o manejable (bytes/str)
-                    # Algunos formatos complejos pueden fallar
-                    self.backup[fmt] = data
-                except Exception:
-                    pass
-                fmt = win32clipboard.EnumClipboardFormats(fmt)
-            win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.warning("No se pudo respaldar el portapapeles: %s", e)
-            try: win32clipboard.CloseClipboard()
-            except: pass
+                    fmt = win32clipboard.EnumClipboardFormats(0)
+                    while fmt:
+                        try:
+                            data = win32clipboard.GetClipboardData(fmt)
+                            self.backup[fmt] = data
+                        except Exception:
+                            pass
+                        fmt = win32clipboard.EnumClipboardFormats(fmt)
+                    self._was_empty = (len(self.backup) == 0)
+                    break
+                finally:
+                    win32clipboard.CloseClipboard()
+            except Exception as e:
+                if attempt < 4:
+                    time.sleep(0.015)
+                else:
+                    logger.warning("No se pudo respaldar el portapapeles tras reintentos: %s", e)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if not self.enabled or not self.backup:
+        if not self.enabled:
             return
             
-        try:
-            # Pequeña pausa para que la app destino procese el Pegado antes de restaurar
-            time.sleep(0.08)
-            
-            win32clipboard.OpenClipboard()
-            win32clipboard.EmptyClipboard()
-            for fmt, data in self.backup.items():
+        # Pequeña pausa para que la app destino procese el Pegado antes de restaurar
+        time.sleep(0.08)
+
+        for attempt in range(5):
+            try:
+                win32clipboard.OpenClipboard()
                 try:
-                    win32clipboard.SetClipboardData(fmt, data)
-                except Exception:
-                    pass
-            win32clipboard.CloseClipboard()
-        except Exception as e:
-            logger.warning("No se pudo restaurar el portapapeles: %s", e)
-            try: win32clipboard.CloseClipboard()
-            except: pass
+                    win32clipboard.EmptyClipboard()
+                    if self.backup:
+                        for fmt, data in self.backup.items():
+                            try:
+                                win32clipboard.SetClipboardData(fmt, data)
+                            except Exception:
+                                pass
+                    break
+                finally:
+                    win32clipboard.CloseClipboard()
+            except Exception as e:
+                if attempt < 4:
+                    time.sleep(0.015)
+                else:
+                    logger.warning("No se pudo restaurar el portapapeles tras reintentos: %s", e)
 
 
 # --- Gestión de Hotkeys (WH_KEYBOARD_LL) ---
@@ -344,10 +401,12 @@ class Win32HotkeyManager:
         self.on_press = on_press
         self.on_release = on_release
         self._target_vk, self._target_modifiers = self._parse_hotkey(self.hotkey_str)
-        self._active_modifiers = set()
+        self._active_modifiers: set[int] = set()
         self._is_pressed = False
         self._hook = None
-        self._thread = None
+        self._thread: threading.Thread | None = None
+        self._thread_id: int | None = None
+        self._ready_event = threading.Event()
         self._stop_event = threading.Event()
         self._hook_proc_ptr = None
         logger.info("Win32HotkeyManager inicializado para: %s", self.hotkey_str)
@@ -385,34 +444,70 @@ class Win32HotkeyManager:
                             self._is_pressed = True
                             threading.Thread(target=self.on_press, daemon=True).start()
             elif is_up:
-                if mod_vk: self._active_modifiers.discard(mod_vk)
+                if mod_vk:
+                    self._active_modifiers.discard(mod_vk)
+                    if self._is_pressed and not all(m in self._active_modifiers for m in self._target_modifiers):
+                        self._is_pressed = False
+                        if self.on_release:
+                            threading.Thread(target=self.on_release, daemon=True).start()
                 elif vk_code == self._target_vk:
                     if self._is_pressed:
                         self._is_pressed = False
-                        if self.on_release: threading.Thread(target=self.on_release, daemon=True).start()
+                        if self.on_release:
+                            threading.Thread(target=self.on_release, daemon=True).start()
         return user32.CallNextHookEx(self._hook, nCode, wParam, lParam)
 
-    def _run(self):
+    def _run(self) -> None:
+        self._thread_id = kernel32.GetCurrentThreadId()
+
+        # Forzar la inicialización de la cola de mensajes Win32 para este hilo
+        msg = wintypes.MSG()
+        user32.PeekMessageW(ctypes.byref(msg), 0, 0, 0, PM_NOREMOVE)
+
         self._hook_proc_ptr = HOOKPROC(self._hook_proc)
         h_mod = 0
-        self._hook = user32.SetWindowsHookExW(13, self._hook_proc_ptr, h_mod, 0) # 13 = WH_KEYBOARD_LL
-        if not self._hook: return
-        msg = wintypes.MSG()
-        while not self._stop_event.is_set():
-            if user32.PeekMessageW(ctypes.byref(msg), 0, 0, 0, 1): # 1 = PM_REMOVE
+        self._hook = user32.SetWindowsHookExW(WH_KEYBOARD_LL, self._hook_proc_ptr, h_mod, 0)
+        if not self._hook:
+            logger.error("No se pudo instalar el hook WH_KEYBOARD_LL (error=%d)", ctypes.get_last_error())
+            self._ready_event.set()
+            return
+
+        logger.debug("Hook WH_KEYBOARD_LL instalado con éxito en thread_id=%d", self._thread_id)
+        self._ready_event.set()
+
+        try:
+            while not self._stop_event.is_set():
+                res = user32.GetMessageW(ctypes.byref(msg), 0, 0, 0)
+                if res <= 0: # 0 = WM_QUIT, -1 = Error
+                    break
                 user32.TranslateMessage(ctypes.byref(msg))
                 user32.DispatchMessageW(ctypes.byref(msg))
-            else: time.sleep(0.01)
-        user32.UnhookWindowsHookEx(self._hook)
+        finally:
+            if self._hook:
+                user32.UnhookWindowsHookEx(self._hook)
+                self._hook = None
+            self._active_modifiers.clear()
+            self._is_pressed = False
+            logger.debug("Hook WH_KEYBOARD_LL desinstalado del thread_id=%s", self._thread_id)
 
     def register(self) -> None:
         self._stop_event.clear()
+        self._ready_event.clear()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        if not self._ready_event.wait(timeout=2.0):
+            logger.warning("Timeout esperando inicialización del hook de teclado")
 
     def unregister(self) -> None:
         self._stop_event.set()
-        if self._thread: self._thread.join(timeout=1.0)
+        if self._thread_id:
+            user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+        if self._thread:
+            self._thread.join(timeout=1.5)
+            self._thread = None
+        self._thread_id = None
+        self._active_modifiers.clear()
+        self._is_pressed = False
 
 class HotkeyManager(Win32HotkeyManager):
     def __init__(self, hotkey: str, callback: Callable[[], None]):

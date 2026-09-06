@@ -309,7 +309,7 @@ class AppConfig:
     app_name: str = "Dictado AI"
     hotkey: str = "ctrl+alt+x"
     server_boot_timeout: float = 45.0
-    auto_copy_clipboard: bool = True
+    auto_copy_clipboard: bool = False
     auto_pause_media: bool = True
     media_key_fallback_enabled: bool = True
     dictation_mode: DictationMode = DictationMode.TOGGLE

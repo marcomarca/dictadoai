@@ -57,57 +57,66 @@ class InferenceWorker:
                 logger.info("InferenceWorker: Texto crudo ASR original: '%s'", raw_asr)
                 
                 # Apply LLM correction if not disabled
-                if self.settings.active_provider != LlmProvider.DISABLED:
+                if self.settings.active_provider != LlmProvider.DISABLED and text and text.strip():
                     self.runtime.push_text(f"Mejorando con {self.settings.active_provider.value}...")
                     text = self.llm_client.correct_text(text)
                 
                 logger.info("InferenceWorker: Texto final a escribir: '%s'", text)
                 
-                # Inyectar el texto final mediante pegado rápido (Ctrl+V)
-                # Si el auto-copy está desactivado, usamos el ClipboardGuard para restaurar el contenido previo
-                # y marcamos el clip para que no aparezca en el historial (Win+V)
-                must_restore = not self.settings.app.auto_copy_clipboard
-                text_to_inject = text + " "
-                
-                with ClipboardGuard(enabled=must_restore):
-                    set_clipboard_text(text_to_inject, exclude_from_history=must_restore)
-                    # Deja que el portapapeles quede visible para la app destino y evita
-                    # carreras contra el hotkey usado para detener la grabación.
-                    time.sleep(0.06)
-                    paste_ok = send_paste_command()
-                
-                self.runtime.state.register_confirmed_text(text)
-                if paste_ok:
-                    self.runtime.push_text(f"Pegado enviado: {text}")
+                cleaned_text = text.strip() if text else ""
+                if not cleaned_text:
+                    self.runtime.push_text("Segmento descartado por el modelo.")
+                    logger.info("InferenceWorker: Transcripción vacía o solo espacios tras procesamiento (utterance_id=%d). Abortando inyección.", utterance_id)
+                    self.runtime.push_preview(2.0)
                 else:
-                    self.runtime.push_text(f"Copiado al portapapeles; pegado automático falló: {text}")
-                
-                if self.settings.app.auto_copy_clipboard:
-                    self.runtime.push_clipboard(text)
-
-                # Calcular estadísticas
-                duration_sec = len(audio_data) / self.settings.audio.sample_rate
-                words = re.findall(r'\w+', text)
-                word_count = len(words)
-                
-                if duration_sec > 0 and word_count > 0:
-                    wpm = (word_count / duration_sec) * 60
-                    # Tiempo que le tomaría escribirlo manualmente (en segundos)
-                    typing_speed = self.settings.app.typing_speed_wpm or 40
-                    typing_time_sec = (word_count / typing_speed) * 60
-                    time_saved_sec = typing_time_sec - duration_sec
+                    # Inyectar el texto final mediante pegado rápido (Ctrl+V)
+                    # Si el auto-copy está desactivado, usamos el ClipboardGuard para restaurar el contenido previo
+                    # y marcamos el clip para que no aparezca en el historial (Win+V)
+                    must_restore = not self.settings.app.auto_copy_clipboard
+                    text_to_inject = cleaned_text + " "
                     
-                    self.runtime.push_stats(wpm, max(0, time_saved_sec))
-                    stats_debug = {
-                        "wpm": wpm,
-                        "time_saved_sec": time_saved_sec,
-                        "word_count": word_count,
-                        "duration_sec": duration_sec
-                    }
-                    logger.info("Estadísticas: %d palabras, %.2fs duración, %.1f WPM, %.1fs ahorro", 
-                                word_count, duration_sec, wpm, time_saved_sec)
+                    with ClipboardGuard(enabled=must_restore):
+                        # exclude_from_history=True siempre durante la inyección sintética para no polucionar Win+V
+                        set_clipboard_text(text_to_inject, exclude_from_history=True)
+                        # Deja que el portapapeles quede visible para la app destino y evita
+                        # carreras contra el hotkey usado para detener la grabación.
+                        time.sleep(0.06)
+                        paste_ok = send_paste_command()
+                    
+                    self.runtime.state.register_confirmed_text(cleaned_text)
+                    if paste_ok:
+                        self.runtime.push_text(f"Pegado enviado: {cleaned_text}")
+                    else:
+                        self.runtime.push_text(f"Copiado al portapapeles; pegado automático falló: {cleaned_text}")
+                        if must_restore:
+                            self.runtime.push_clipboard(cleaned_text)
+                    
+                    if self.settings.app.auto_copy_clipboard:
+                        self.runtime.push_clipboard(cleaned_text)
 
-                logger.info("Texto confirmado y guardado en state: %s", text)
+                    # Calcular estadísticas
+                    duration_sec = len(audio_data) / self.settings.audio.sample_rate
+                    words = re.findall(r'\w+', cleaned_text)
+                    word_count = len(words)
+                    
+                    if duration_sec > 0 and word_count > 0:
+                        wpm = (word_count / duration_sec) * 60
+                        # Tiempo que le tomaría escribirlo manualmente (en segundos)
+                        typing_speed = self.settings.app.typing_speed_wpm or 40
+                        typing_time_sec = (word_count / typing_speed) * 60
+                        time_saved_sec = typing_time_sec - duration_sec
+                        
+                        self.runtime.push_stats(wpm, max(0, time_saved_sec))
+                        stats_debug = {
+                            "wpm": wpm,
+                            "time_saved_sec": time_saved_sec,
+                            "word_count": word_count,
+                            "duration_sec": duration_sec
+                        }
+                        logger.info("Estadísticas: %d palabras, %.2fs duración, %.1f WPM, %.1fs ahorro", 
+                                    word_count, duration_sec, wpm, time_saved_sec)
+
+                    logger.info("Texto confirmado y guardado en state: %s", cleaned_text)
             else:
                 self.runtime.push_text("Segmento descartado por el modelo.")
                 logger.info("InferenceWorker: Segmento final descartado (texto nulo/vacío) para utterance_id=%d", utterance_id)
