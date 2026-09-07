@@ -54,6 +54,12 @@
 
     if (viewName === 'history') {
       fetchHistory();
+    } else if (viewName === 'vocabulary') {
+      fetchVocabulary();
+    } else if (viewName === 'modes') {
+      fetchModes();
+    } else if (viewName === 'home') {
+      fetchDashboardMetrics();
     }
   }
 
@@ -374,7 +380,168 @@
     });
   }
 
-  // 6. Connect to Qt WebChannel
+  // 6. Dashboard Metrics
+  function fetchDashboardMetrics() {
+    if (!bridge) return;
+    bridge.getDashboardMetrics((jsonStr) => {
+      try {
+        const m = JSON.parse(jsonStr);
+        const statWpm = document.getElementById('statWpm');
+        const statWords = document.getElementById('statWords');
+        const statApps = document.getElementById('statApps');
+        const statTimeSaved = document.getElementById('statTimeSaved');
+
+        if (statWpm) statWpm.textContent = m.avg_wpm || 0;
+        if (statWords) statWords.textContent = (m.total_words || 0).toLocaleString();
+        if (statApps) statApps.textContent = m.total_dictations || 0;
+        if (statTimeSaved) statTimeSaved.textContent = m.minutes_saved || 0;
+      } catch (err) {
+        console.error('Error cargando métricas:', err);
+      }
+    });
+  }
+
+  // 7. Vocabulary Controller
+  const vocabListContainer = document.getElementById('vocabListContainer');
+  const vocabWordInput = document.getElementById('vocabWordInput');
+  const vocabReplaceInput = document.getElementById('vocabReplaceInput');
+  const btnAddVocab = document.getElementById('btnAddVocab');
+
+  function fetchVocabulary() {
+    if (!bridge || !vocabListContainer) return;
+    bridge.getVocabulary((jsonStr) => {
+      try {
+        const items = JSON.parse(jsonStr);
+        renderVocabulary(items);
+      } catch (err) {
+        console.error('Error cargando vocabulario:', err);
+      }
+    });
+  }
+
+  function renderVocabulary(items) {
+    if (!vocabListContainer) return;
+    vocabListContainer.innerHTML = '';
+    if (!items || items.length === 0) {
+      vocabListContainer.innerHTML = `
+        <div style="text-align: center; padding: 32px 16px; color: var(--text-muted);">
+          No hay términos de vocabulario registrados.
+        </div>
+      `;
+      return;
+    }
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'list-card-item';
+      const repLabel = item.replacement ? `<span style="font-weight: normal; color: var(--accent-blue);"> &rarr; ${escapeHtml(item.replacement)}</span>` : '';
+      row.innerHTML = `
+        <div class="item-left">
+          <div class="item-text">
+            <h4>${escapeHtml(item.word)}${repLabel}</h4>
+            <p>${item.replacement ? 'Sustitución automática' : 'Término prioritario en contexto de LLM'}</p>
+          </div>
+        </div>
+        <button class="action-chip-btn btn-del-vocab" data-id="${item.id}" style="color: var(--accent-red);">
+          <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+          Eliminar
+        </button>
+      `;
+
+      row.querySelector('.btn-del-vocab').addEventListener('click', () => {
+        if (bridge) {
+          bridge.deleteVocabulary(item.id, () => fetchVocabulary());
+        }
+      });
+
+      vocabListContainer.appendChild(row);
+    });
+  }
+
+  if (btnAddVocab) {
+    btnAddVocab.addEventListener('click', () => {
+      const word = (vocabWordInput.value || '').trim();
+      const rep = (vocabReplaceInput.value || '').trim();
+      if (!word) return;
+
+      if (bridge) {
+        bridge.addVocabulary(word, rep, () => {
+          vocabWordInput.value = '';
+          vocabReplaceInput.value = '';
+          fetchVocabulary();
+        });
+      }
+    });
+  }
+
+  // 8. Modes Controller
+  const modesContainer = document.querySelector('#view-modes .list-group');
+  const btnCreateMode = document.getElementById('btnCreateMode');
+
+  function fetchModes() {
+    if (!bridge || !modesContainer) return;
+    bridge.getModes((jsonStr) => {
+      try {
+        const modes = JSON.parse(jsonStr);
+        renderModes(modes);
+      } catch (err) {
+        console.error('Error cargando modos:', err);
+      }
+    });
+  }
+
+  function renderModes(modes) {
+    if (!modesContainer) return;
+    modesContainer.innerHTML = '';
+
+    modes.forEach(mode => {
+      const card = document.createElement('div');
+      card.className = 'list-card-item';
+      const isActive = !!mode.active;
+      const dot = isActive ? '<span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-green); margin-left: 4px;"></span>' : '';
+
+      card.innerHTML = `
+        <div class="item-left">
+          <div class="item-icon-circle" style="color: ${isActive ? 'var(--accent-green)' : 'var(--text-secondary)'};">
+            <svg viewBox="0 0 24 24"><path d="M12 2L9.5 8.5 3 11l6.5 2.5L12 20l2.5-6.5L21 11l-6.5-2.5z"/></svg>
+          </div>
+          <div class="item-text">
+            <h4>${escapeHtml(mode.name)} ${dot}</h4>
+            <p>${escapeHtml(mode.description || '')}</p>
+          </div>
+        </div>
+        ${isActive
+          ? '<span class="action-chip-btn" style="color: var(--accent-green); font-weight: 600;">Activo</span>'
+          : `<button class="btn-secondary btn-select-mode" data-id="${mode.id}" style="padding: 4px 12px; font-size: 12px;">Seleccionar</button>`
+        }
+      `;
+
+      const selBtn = card.querySelector('.btn-select-mode');
+      if (selBtn) {
+        selBtn.addEventListener('click', () => {
+          if (bridge) {
+            bridge.setActiveMode(mode.id, () => fetchModes());
+          }
+        });
+      }
+
+      modesContainer.appendChild(card);
+    });
+  }
+
+  if (btnCreateMode) {
+    btnCreateMode.addEventListener('click', () => {
+      const name = prompt('Nombre del nuevo modo:');
+      if (!name) return;
+      const desc = prompt('Descripción breve:') || '';
+      const promptText = prompt('Instrucciones para el LLM (System Prompt):') || '';
+      if (bridge) {
+        bridge.createMode(name, desc, promptText, false, () => fetchModes());
+      }
+    });
+  }
+
+  // 9. Connect to Qt WebChannel
   function initWebChannel() {
     if (typeof QWebChannel === 'undefined') {
       console.warn('QWebChannel no detectado en el entorno. Modo standalone.');
@@ -390,6 +557,7 @@
         bridge.historyUpdated.connect((jsonStr) => {
           try {
             renderHistory(JSON.parse(jsonStr));
+            fetchDashboardMetrics();
           } catch (e) {
             console.error(e);
           }
@@ -420,6 +588,9 @@
       });
 
       fetchHistory();
+      fetchDashboardMetrics();
+      fetchVocabulary();
+      fetchModes();
       loadConfig();
     });
   }

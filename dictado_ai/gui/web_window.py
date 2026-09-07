@@ -17,6 +17,8 @@ from ..audio_devices import list_input_devices
 from ..autostart import is_autostart_enabled, set_autostart
 from ..history import HistoryManager
 from ..hotkeys import send_paste_command, set_clipboard_text, ClipboardGuard
+from ..modes import ModesManager
+from ..vocabulary import VocabularyManager
 from .theme import get_app_icon
 
 if TYPE_CHECKING:
@@ -43,13 +45,81 @@ class WebBridge(QObject):
         window: SuperWhisperWindow,
         toggle_dictation_cb: Callable[[], None] | None = None,
         change_device_cb: Callable[[str | None, str], None] | None = None,
+        vocabulary_manager: VocabularyManager | None = None,
+        modes_manager: ModesManager | None = None,
     ):
         super().__init__()
         self.settings = settings
         self.history_manager = history_manager
+        self.vocabulary_manager = vocabulary_manager or VocabularyManager(settings.paths.vocabulary_file)
+        self.modes_manager = modes_manager or ModesManager(settings.paths.modes_file)
         self.window = window
         self.toggle_dictation_cb = toggle_dictation_cb
         self.change_device_cb = change_device_cb
+
+    # --- Slots de Vocabulario ---
+    @Slot(result=str)
+    def getVocabulary(self) -> str:
+        try:
+            items = self.vocabulary_manager.get_all()
+            return json.dumps([item.to_dict() for item in items], ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error obteniendo vocabulario: %s", e)
+            return "[]"
+
+    @Slot(str, str, result=str)
+    def addVocabulary(self, word: str, replacement: str = "") -> str:
+        try:
+            entry = self.vocabulary_manager.add_item(word, replacement)
+            return json.dumps(entry.to_dict() if entry else {}, ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error agregando vocabulario: %s", e)
+            return "{}"
+
+    @Slot(str, result=bool)
+    def deleteVocabulary(self, item_id: str) -> bool:
+        return self.vocabulary_manager.delete_item(item_id)
+
+    @Slot(str, result=bool)
+    def toggleVocabulary(self, item_id: str) -> bool:
+        return self.vocabulary_manager.toggle_item(item_id)
+
+    # --- Slots de Modos ---
+    @Slot(result=str)
+    def getModes(self) -> str:
+        try:
+            modes = self.modes_manager.get_all()
+            return json.dumps([m.to_dict() for m in modes], ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error obteniendo modos: %s", e)
+            return "[]"
+
+    @Slot(str, result=bool)
+    def setActiveMode(self, mode_id: str) -> bool:
+        return self.modes_manager.set_active_mode(mode_id)
+
+    @Slot(str, str, str, bool, result=str)
+    def createMode(self, name: str, description: str, system_prompt: str, is_raw: bool = False) -> str:
+        try:
+            m = self.modes_manager.add_mode(name, description, system_prompt, is_raw=is_raw)
+            return json.dumps(m.to_dict() if m else {}, ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error creando modo: %s", e)
+            return "{}"
+
+    @Slot(str, result=bool)
+    def deleteMode(self, mode_id: str) -> bool:
+        return self.modes_manager.delete_mode(mode_id)
+
+    # --- Slots de Métricas Dashboard ---
+    @Slot(result=str)
+    def getDashboardMetrics(self) -> str:
+        try:
+            metrics = self.history_manager.get_weekly_metrics()
+            return json.dumps(metrics, ensure_ascii=False)
+        except Exception as e:
+            logger.error("Error calculando métricas: %s", e)
+            return json.dumps({"avg_wpm": 0, "total_words": 0, "total_dictations": 0, "minutes_saved": 0.0})
 
     # --- Slots de Historial ---
     @Slot(int, result=str)
@@ -188,10 +258,14 @@ class SuperWhisperWindow(QMainWindow):
         history_manager: HistoryManager,
         toggle_dictation_cb: Callable[[], None] | None = None,
         change_device_cb: Callable[[str | None, str], None] | None = None,
+        vocabulary_manager: VocabularyManager | None = None,
+        modes_manager: ModesManager | None = None,
     ):
         super().__init__()
         self.settings = settings
         self.history_manager = history_manager
+        self.vocabulary_manager = vocabulary_manager or VocabularyManager(settings.paths.vocabulary_file)
+        self.modes_manager = modes_manager or ModesManager(settings.paths.modes_file)
 
         self.setWindowTitle("DictadoAI")
         self.resize(1020, 690)
@@ -226,6 +300,8 @@ class SuperWhisperWindow(QMainWindow):
             self,
             toggle_dictation_cb,
             change_device_cb,
+            vocabulary_manager=self.vocabulary_manager,
+            modes_manager=self.modes_manager,
         )
         self.channel.registerObject("bridge", self.bridge)
         self.web_view.page().setWebChannel(self.channel)

@@ -81,6 +81,14 @@ class PathsConfig:
         return self.logs_dir / "transcripts_history.jsonl"
 
     @property
+    def vocabulary_file(self) -> Path:
+        return self.logs_dir / "vocabulary.json"
+
+    @property
+    def modes_file(self) -> Path:
+        return self.logs_dir / "modes.json"
+
+    @property
     def debug_audio_dir(self) -> Path:
         return self.project_root / self.debug_audio_dir_name
 

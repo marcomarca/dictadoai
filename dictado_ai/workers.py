@@ -15,7 +15,9 @@ import time
 from .asr import AsrClientRouter
 from .config import Settings, LlmProvider
 from .llm_client import LlmClient
+from .modes import ModesManager
 from .runtime import AppRuntime
+from .vocabulary import VocabularyManager
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ class InferenceWorker:
         self.asr_client = asr_client
         self.llm_client = llm_client
         self.history_manager = HistoryManager(self.settings.paths.history_file)
+        self.vocabulary_manager = VocabularyManager(self.settings.paths.vocabulary_file)
+        self.modes_manager = ModesManager(self.settings.paths.modes_file)
 
     def run(self) -> None:
         while not self.runtime.stop_event.is_set():
@@ -58,10 +62,24 @@ class InferenceWorker:
                 
                 logger.info("InferenceWorker: Texto crudo ASR original: '%s'", raw_asr)
                 
-                # Apply LLM correction if not disabled
-                if self.settings.active_provider != LlmProvider.DISABLED and text and text.strip():
-                    self.runtime.push_text(f"Mejorando con {self.settings.active_provider.value}...")
-                    text = self.llm_client.correct_text(text)
+                # Consultar el modo de dictado activo
+                active_mode = self.modes_manager.get_active_mode()
+
+                # Apply LLM correction if not disabled and not in raw mode
+                if active_mode.is_raw:
+                    logger.info("Modo Raw activo: omitiendo llamada a LLM")
+                elif self.settings.active_provider != LlmProvider.DISABLED and text and text.strip():
+                    self.runtime.push_text(f"Mejorando con {self.settings.active_provider.value} ({active_mode.name})...")
+                    hints = self.vocabulary_manager.get_prompt_hints()
+                    text = self.llm_client.correct_text(
+                        text,
+                        system_prompt_override=active_mode.system_prompt or None,
+                        vocabulary_hints=hints or None,
+                    )
+                
+                # Aplicar sustituciones deterministas de vocabulario
+                if text:
+                    text = self.vocabulary_manager.apply_replacements(text)
                 
                 logger.info("InferenceWorker: Texto final a escribir: '%s'", text)
                 

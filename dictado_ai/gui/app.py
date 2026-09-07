@@ -8,8 +8,10 @@ from PySide6.QtWidgets import QApplication
 
 from ..config import Settings
 from ..history import HistoryManager
+from ..modes import ModesManager
 from ..runtime import AppRuntime
 from ..ui_messages import UiMessage
+from ..vocabulary import VocabularyManager
 from .overlay import DictationOverlay
 from .tray import TrayController
 from .web_window import SuperWhisperWindow
@@ -33,6 +35,8 @@ class DictationQtApp:
         self.settings = settings
         self.runtime = runtime
         self.history_manager = HistoryManager(self.settings.paths.history_file)
+        self.vocabulary_manager = VocabularyManager(self.settings.paths.vocabulary_file)
+        self.modes_manager = ModesManager(self.settings.paths.modes_file)
         self.overlay = DictationOverlay(settings, is_listening_supplier=self.runtime.state.is_listening)
         
         self.superwhisper_window = SuperWhisperWindow(
@@ -40,6 +44,8 @@ class DictationQtApp:
             self.history_manager,
             toggle_dictation_cb=toggle_callback,
             change_device_cb=change_input_device_callback,
+            vocabulary_manager=self.vocabulary_manager,
+            modes_manager=self.modes_manager,
         )
 
         self.tray = TrayController(

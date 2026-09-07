@@ -128,6 +128,59 @@ class HistoryManager:
                 logger.error("Error al eliminar entrada del historial: %s", e)
                 return False
 
+    def get_weekly_metrics(self) -> dict[str, Any]:
+        """Calcula las métricas de productividad de los últimos 7 días."""
+        if not self.history_file.exists():
+            return {
+                "avg_wpm": 0,
+                "total_words": 0,
+                "total_dictations": 0,
+                "minutes_saved": 0.0,
+            }
+
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime.now(timezone.utc)
+        seven_days_ago = now - timedelta(days=7)
+
+        entries = self.get_recent(1000)
+        recent_entries: list[HistoryEntry] = []
+
+        for e in entries:
+            try:
+                dt = datetime.fromisoformat(e.timestamp)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt >= seven_days_ago:
+                    recent_entries.append(e)
+            except Exception:
+                recent_entries.append(e)
+
+        if not recent_entries:
+            return {
+                "avg_wpm": 0,
+                "total_words": 0,
+                "total_dictations": 0,
+                "minutes_saved": 0.0,
+            }
+
+        total_words = sum(e.word_count for e in recent_entries)
+        valid_wpms = [e.wpm for e in recent_entries if 10 <= e.wpm <= 500]
+        avg_wpm = round(sum(valid_wpms) / len(valid_wpms)) if valid_wpms else 0
+
+        # Estimación de tiempo ahorrado: promedio de escritura manual = 40 WPM
+        time_typing_sec = (total_words / 40.0) * 60.0
+        time_speaking_sec = sum(e.duration_sec for e in recent_entries)
+        time_saved_sec = max(0.0, time_typing_sec - time_speaking_sec)
+        minutes_saved = round(time_saved_sec / 60.0, 1)
+
+        return {
+            "avg_wpm": avg_wpm,
+            "total_words": total_words,
+            "total_dictations": len(recent_entries),
+            "minutes_saved": minutes_saved,
+        }
+
     def clear(self) -> bool:
         """Limpia todo el historial (útil para pruebas o reseteo)."""
         with self._lock:

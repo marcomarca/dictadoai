@@ -12,7 +12,12 @@ class LlmClient:
     def __init__(self, settings: Settings):
         self.settings = settings
 
-    def correct_text(self, text: str) -> Optional[str]:
+    def correct_text(
+        self,
+        text: str,
+        system_prompt_override: str | None = None,
+        vocabulary_hints: list[str] | None = None,
+    ) -> Optional[str]:
         if not text or not text.strip():
             return text
 
@@ -24,7 +29,15 @@ class LlmClient:
         if provider == LlmProvider.OLLAMA and not self.settings.ollama.enabled:
             return text
 
-        system_prompt = self.settings.ollama.system_prompt.replace("{text}", text)
+        base_prompt = system_prompt_override or self.settings.ollama.system_prompt
+        if "{text}" in base_prompt:
+            system_prompt = base_prompt.replace("{text}", text)
+        else:
+            system_prompt = f"{base_prompt}\n\nTexto transcrito a formatear:\n{text}"
+
+        if vocabulary_hints:
+            vocab_text = ", ".join(vocabulary_hints)
+            system_prompt += f"\n\nVOCABULARIO CLAVE (respeta estrictamente la ortografía y mayúsculas de estos términos):\n{vocab_text}"
 
         try:
             logger.debug("Enviando texto a %s para corrección: '%s'", provider.value, text)
