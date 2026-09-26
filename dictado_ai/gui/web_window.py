@@ -223,8 +223,10 @@ class WebBridge(QObject):
                 set_autostart(value)
             elif key == "cfgAutoCopy":
                 self.settings.app = replace(self.settings.app, auto_copy_clipboard=value)
+                self.settings.save()
             elif key == "cfgAutoPauseMedia":
                 self.settings.app = replace(self.settings.app, auto_pause_media=value)
+                self.settings.save()
             logger.info("Ajuste %s actualizado a %s", key, value)
         except Exception as e:
             logger.error("Error guardando ajuste %s: %s", key, e)

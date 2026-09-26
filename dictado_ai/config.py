@@ -5,6 +5,7 @@ from enum import Enum
 from pathlib import Path
 import os
 import sys
+import json
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -46,11 +47,25 @@ class ApiKeys:
 @dataclass(frozen=True)
 class PathsConfig:
     project_root: Path
+    user_data_dir: Path | None = None
     server_url: str = "http://127.0.0.1:8170"
     server_exe_name: str = "bin/whisper-server.exe"
     model_relative_path: Path = Path("models") / "ggml-large-v3-turbo-q8_0.bin"
     model_download_url: str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin?download=true"
     debug_audio_dir_name: str = "debug_audio"
+
+    @property
+    def app_data_dir(self) -> Path:
+        if self.user_data_dir is not None:
+            return self.user_data_dir
+        base = os.environ.get("APPDATA")
+        if base:
+            return Path(base) / "DictadoAI"
+        return Path.home() / "AppData" / "Roaming" / "DictadoAI"
+
+    @property
+    def config_file(self) -> Path:
+        return self.app_data_dir / "config.json"
 
     @property
     def server_exe_path(self) -> Path:
@@ -364,6 +379,165 @@ class Settings:
     active_provider: LlmProvider = LlmProvider.DISABLED
     api_keys: ApiKeys = field(default_factory=ApiKeys)
 
+    def to_dict(self) -> dict:
+        return {
+            "version": 1,
+            "app": {
+                "auto_copy_clipboard": self.app.auto_copy_clipboard,
+                "auto_pause_media": self.app.auto_pause_media,
+                "media_key_fallback_enabled": self.app.media_key_fallback_enabled,
+                "dictation_mode": self.app.dictation_mode.value,
+                "hotkey": self.app.hotkey,
+                "typing_speed_wpm": self.app.typing_speed_wpm,
+                "save_debug_audio": self.app.save_debug_audio,
+            },
+            "audio": {
+                "input_device_key": self.audio.input_device_key,
+                "input_device_label": self.audio.input_device_label,
+            },
+            "active_provider": self.active_provider.value if isinstance(self.active_provider, LlmProvider) else str(self.active_provider),
+            "asr": {
+                "provider": self.asr.provider.value if isinstance(self.asr.provider, AsrProvider) else str(self.asr.provider),
+                "device": self.asr.device.value if isinstance(self.asr.device, AsrDevice) else str(self.asr.device),
+                "language": self.asr.language,
+            },
+            "groq_asr": {
+                "model": self.groq_asr.model.value if isinstance(self.groq_asr.model, GroqAsrModel) else str(self.groq_asr.model),
+            },
+            "ollama": {
+                "model": self.ollama.model,
+                "url": self.ollama.url,
+                "enabled": self.ollama.enabled,
+            },
+        }
+
+    def apply_dict(self, data: dict) -> None:
+        if not isinstance(data, dict):
+            return
+
+        from dataclasses import replace
+
+        # App
+        app_data = data.get("app")
+        if isinstance(app_data, dict):
+            app_updates = {}
+            if "auto_copy_clipboard" in app_data:
+                app_updates["auto_copy_clipboard"] = bool(app_data["auto_copy_clipboard"])
+            if "auto_pause_media" in app_data:
+                app_updates["auto_pause_media"] = bool(app_data["auto_pause_media"])
+            if "media_key_fallback_enabled" in app_data:
+                app_updates["media_key_fallback_enabled"] = bool(app_data["media_key_fallback_enabled"])
+            if "hotkey" in app_data and isinstance(app_data["hotkey"], str) and app_data["hotkey"].strip():
+                app_updates["hotkey"] = app_data["hotkey"].strip()
+            if "typing_speed_wpm" in app_data and isinstance(app_data["typing_speed_wpm"], (int, float)):
+                app_updates["typing_speed_wpm"] = int(app_data["typing_speed_wpm"])
+            if "save_debug_audio" in app_data:
+                app_updates["save_debug_audio"] = bool(app_data["save_debug_audio"])
+            if "dictation_mode" in app_data:
+                val = app_data["dictation_mode"]
+                for mode in DictationMode:
+                    if mode.value == val or mode.name == val:
+                        app_updates["dictation_mode"] = mode
+                        break
+            if app_updates:
+                self.app = replace(self.app, **app_updates)
+
+        # Audio
+        audio_data = data.get("audio")
+        if isinstance(audio_data, dict):
+            audio_updates = {}
+            if "input_device_key" in audio_data:
+                val = audio_data["input_device_key"]
+                audio_updates["input_device_key"] = str(val) if val is not None else None
+            if "input_device_label" in audio_data and isinstance(audio_data["input_device_label"], str):
+                audio_updates["input_device_label"] = audio_data["input_device_label"]
+            if audio_updates:
+                self.audio = replace(self.audio, **audio_updates)
+
+        # Active provider
+        if "active_provider" in data:
+            val = data["active_provider"]
+            for prov in LlmProvider:
+                if prov.value == val or prov.name == val:
+                    self.active_provider = prov
+                    break
+
+        # ASR
+        asr_data = data.get("asr")
+        if isinstance(asr_data, dict):
+            asr_updates = {}
+            if "provider" in asr_data:
+                val = asr_data["provider"]
+                for p in AsrProvider:
+                    if p.value == val or p.name == val:
+                        asr_updates["provider"] = p
+                        break
+            if "device" in asr_data:
+                val = asr_data["device"]
+                for d in AsrDevice:
+                    if d.value == val or d.name == val:
+                        asr_updates["device"] = d
+                        break
+            if "language" in asr_data and isinstance(asr_data["language"], str):
+                asr_updates["language"] = asr_data["language"]
+            if asr_updates:
+                self.asr = replace(self.asr, **asr_updates)
+
+        # Groq ASR
+        groq_data = data.get("groq_asr")
+        if isinstance(groq_data, dict):
+            groq_updates = {}
+            if "model" in groq_data:
+                val = groq_data["model"]
+                for m in GroqAsrModel:
+                    if m.value == val or m.name == val:
+                        groq_updates["model"] = m
+                        break
+            if groq_updates:
+                self.groq_asr = replace(self.groq_asr, **groq_updates)
+
+        # Ollama
+        ollama_data = data.get("ollama")
+        if isinstance(ollama_data, dict):
+            ollama_updates = {}
+            if "model" in ollama_data and isinstance(ollama_data["model"], str):
+                ollama_updates["model"] = ollama_data["model"]
+            if "url" in ollama_data and isinstance(ollama_data["url"], str):
+                ollama_updates["url"] = ollama_data["url"]
+            if "enabled" in ollama_data:
+                ollama_updates["enabled"] = bool(ollama_data["enabled"])
+            if ollama_updates:
+                self.ollama = replace(self.ollama, **ollama_updates)
+
+    def save(self, path: Path | None = None) -> bool:
+        target_path = path or self.paths.config_file
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = target_path.with_name(f"{target_path.name}.tmp")
+            data = self.to_dict()
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, target_path)
+            return True
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Error guardando configuración en %s", target_path)
+            return False
+
+    def load(self, path: Path | None = None) -> bool:
+        target_path = path or self.paths.config_file
+        if not target_path.exists():
+            return False
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.apply_dict(data)
+            return True
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("Error cargando configuración desde %s", target_path)
+            return False
+
     @classmethod
     def default(cls) -> "Settings":
         if getattr(sys, "frozen", False):
@@ -374,7 +548,7 @@ class Settings:
         
         load_dotenv(project_root / ".env")
         
-        return cls(
+        settings = cls(
             paths=PathsConfig(project_root=project_root),
             api_keys=ApiKeys(
                 groq=os.getenv("GROQ_API_KEY", ""),
@@ -382,3 +556,5 @@ class Settings:
                 openrouter=os.getenv("OPENROUTER_API_KEY", ""),
             )
         )
+        settings.load()
+        return settings

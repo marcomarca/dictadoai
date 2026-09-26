@@ -280,6 +280,7 @@ class DictationController:
             self.settings.asr = replace(self.settings.asr, provider=provider, device=selected_device)
             logger.info("Cambiando ASR a Whisper local con dispositivo: %s", selected_device)
 
+        self.settings.save()
         self.asr_client.refresh()
 
         self.server_manager.shutdown()
@@ -299,6 +300,7 @@ class DictationController:
             input_device_key=device_key,
             input_device_label=device_label,
         )
+        self.settings.save()
 
         if self.runtime.state.is_listening():
             self.set_dictation_state(False)

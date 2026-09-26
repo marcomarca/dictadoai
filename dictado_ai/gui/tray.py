@@ -192,11 +192,13 @@ class TrayController:
 
     def set_provider(self, provider: LlmProvider) -> None:
         self.settings.active_provider = provider
+        self.settings.save()
 
     def set_dictation_mode(self, mode: DictationMode) -> None:
         try:
             from dataclasses import replace
             self.settings.app = replace(self.settings.app, dictation_mode=mode)
+            self.settings.save()
             logger.info(f"Modo de activación cambiado a: {mode.value}")
             self.change_mode_callback()
         except Exception:
@@ -259,16 +261,10 @@ class TrayController:
             self.autostart_action.setChecked(is_autostart_enabled())
 
     def toggle_auto_copy(self, checked: bool) -> None:
-        # Note: AppConfig is frozen, so we manipulate settings directly if it was not frozen
-        # Actually in config.py, Settings itself is NOT frozen, but its members are.
-        # We need a way to update it. Let's check config.py again.
-        # @dataclass(frozen=True) class AppConfig
-        # We can use replace() or just make it non-frozen if needed.
-        # But wait, self.settings.app is an instance of AppConfig.
-        # For now, I'll just try to set it, if it fails I'll fix the dataclass.
         try:
             from dataclasses import replace
             self.settings.app = replace(self.settings.app, auto_copy_clipboard=checked)
+            self.settings.save()
             logger.info(f"Auto-copiado al portapapeles: {checked}")
         except Exception:
             logger.exception("No se pudo actualizar la configuración de copiado")
@@ -277,6 +273,7 @@ class TrayController:
         try:
             from dataclasses import replace
             self.settings.app = replace(self.settings.app, auto_pause_media=checked)
+            self.settings.save()
             logger.info(f"Auto-pausar multimedia: {checked}")
         except Exception:
             logger.exception("No se pudo actualizar la configuración de pausa multimedia")
