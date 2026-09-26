@@ -60,6 +60,8 @@
       fetchModes();
     } else if (viewName === 'home') {
       fetchDashboardMetrics();
+    } else if (viewName === 'sound') {
+      fetchAudioDevices();
     }
   }
 
@@ -98,9 +100,39 @@
   }
 
   // 2. Microphone Selector Dropdown
+  function fetchAudioDevices(callback) {
+    if (!bridge) {
+      if (typeof callback === 'function') callback();
+      return;
+    }
+    bridge.listAudioDevices((jsonStr) => {
+      try {
+        const parsed = JSON.parse(jsonStr);
+        let devices = [];
+        let selectedKey = '';
+        if (Array.isArray(parsed)) {
+          devices = parsed;
+        } else if (parsed && typeof parsed === 'object') {
+          devices = parsed.devices || [];
+          selectedKey = parsed.selected_key || '';
+        }
+        renderDevices(devices, selectedKey);
+      } catch (err) {
+        console.error('Error cargando dispositivos de audio:', err);
+      }
+      if (typeof callback === 'function') callback();
+    });
+  }
+
   micSelectorBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    micDropdownMenu.classList.toggle('show');
+    if (bridge) {
+      fetchAudioDevices(() => {
+        micDropdownMenu.classList.toggle('show');
+      });
+    } else {
+      micDropdownMenu.classList.toggle('show');
+    }
   });
 
   document.addEventListener('click', () => {
@@ -571,21 +603,17 @@
       if (bridge.deviceListChanged) {
         bridge.deviceListChanged.connect((jsonStr, selectedKey) => {
           try {
-            renderDevices(JSON.parse(jsonStr), selectedKey);
+            const parsed = JSON.parse(jsonStr);
+            const devices = Array.isArray(parsed) ? parsed : (parsed.devices || []);
+            const selKey = selectedKey !== undefined ? selectedKey : (parsed.selected_key || '');
+            renderDevices(devices, selKey);
           } catch (e) {
-            console.error(e);
+            console.error('Error en deviceListChanged signal:', e);
           }
         });
       }
 
-      // Initial calls
-      bridge.listAudioDevices((jsonStr, selectedKey) => {
-        try {
-          renderDevices(JSON.parse(jsonStr), selectedKey);
-        } catch (e) {
-          console.error(e);
-        }
-      });
+      fetchAudioDevices();
 
       fetchHistory();
       fetchDashboardMetrics();

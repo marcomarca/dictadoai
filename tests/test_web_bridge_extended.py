@@ -88,16 +88,18 @@ class TestWebBridgeExtended(unittest.TestCase):
         self.assertEqual(len(json.loads(self.bridge.getModes())), 4)
 
     def test_dashboard_metrics_slot(self):
+        from datetime import datetime, timezone
+
         # Con historial vacío
         metrics_json = self.bridge.getDashboardMetrics()
         metrics = json.loads(metrics_json)
         self.assertEqual(metrics["avg_wpm"], 0)
         self.assertEqual(metrics["total_words"], 0)
 
-        # Agregando entrada
+        # Agregando entrada reciente
         entry = HistoryEntry(
             id="e1",
-            timestamp="2026-09-06T12:00:00Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             text="Prueba de métricas",
             word_count=50,
             duration_sec=12.0,

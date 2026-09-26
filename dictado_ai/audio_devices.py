@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import logging
 import sys
+import threading
 from collections import Counter
 from dataclasses import dataclass
 
 import sounddevice as sd
 
+logger = logging.getLogger(__name__)
 
 WINDOWS_WASAPI_HOSTAPI = "Windows WASAPI"
+_portaudio_lock = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -20,12 +24,31 @@ class AudioInputDevice:
     label: str
 
 
+def refresh_audio_devices() -> None:
+    """
+    Fuerza a PortAudio a reinicializarse para detectar dispositivos de audio
+    conectados o desconectados en caliente (USB, Bluetooth, etc.).
+    """
+    with _portaudio_lock:
+        try:
+            sd._terminate()
+            sd._initialize()
+            logger.debug("PortAudio reinicializado para re-enumerar dispositivos de audio")
+        except Exception as e:
+            logger.warning("Error al reinicializar PortAudio: %s", e)
+
+
 def _hostapi_name_by_index() -> dict[int, str]:
-    hostapis = sd.query_hostapis()
-    return {
-        index: str(hostapi.get("name", f"Host API {index}"))
-        for index, hostapi in enumerate(hostapis)
-    }
+    with _portaudio_lock:
+        try:
+            hostapis = sd.query_hostapis()
+            return {
+                index: str(hostapi.get("name", f"Host API {index}"))
+                for index, hostapi in enumerate(hostapis)
+            }
+        except Exception as e:
+            logger.warning("Error al consultar hostapis de PortAudio: %s", e)
+            return {}
 
 
 def _is_windows() -> bool:
@@ -58,8 +81,17 @@ def _base_label(name: str, hostapi_name: str) -> str:
     return f"{name} [{hostapi_name}]"
 
 
-def list_input_devices() -> list[AudioInputDevice]:
-    devices = sd.query_devices()
+def list_input_devices(force_refresh: bool = False) -> list[AudioInputDevice]:
+    if force_refresh:
+        refresh_audio_devices()
+
+    with _portaudio_lock:
+        try:
+            devices = sd.query_devices()
+        except Exception as e:
+            logger.warning("Error al consultar dispositivos de PortAudio: %s", e)
+            return []
+
     hostapi_names = _hostapi_name_by_index()
 
     candidates: list[tuple[int, str, str, int, str, str]] = []
@@ -113,18 +145,26 @@ def list_input_devices() -> list[AudioInputDevice]:
     return input_devices
 
 
-def find_input_device_by_key(selected_key: str) -> AudioInputDevice | None:
-    for device in list_input_devices():
+def find_input_device_by_key(selected_key: str, force_refresh: bool = False) -> AudioInputDevice | None:
+    devices = list_input_devices(force_refresh=force_refresh)
+    for device in devices:
         if device.key == selected_key:
             return device
+
+    # Si no se encontró y no habíamos forzado refresh, intentar una vez más con refresh forzado
+    if not force_refresh:
+        for device in list_input_devices(force_refresh=True):
+            if device.key == selected_key:
+                return device
+
     return None
 
 
-def resolve_input_device_index(selected_key: str | None) -> int | None:
+def resolve_input_device_index(selected_key: str | None, force_refresh: bool = False) -> int | None:
     if selected_key is None:
         return None
 
-    device = find_input_device_by_key(selected_key)
+    device = find_input_device_by_key(selected_key, force_refresh=force_refresh)
     if device is None:
         return None
 

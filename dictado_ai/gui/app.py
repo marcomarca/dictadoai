@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import queue
 import logging
+import sys
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QAbstractNativeEventFilter, QObject, QTimer, Signal
 from PySide6.QtWidgets import QApplication
 
+from ..audio_devices import list_input_devices, refresh_audio_devices
 from ..config import Settings
 from ..history import HistoryManager
 from ..modes import ModesManager
@@ -17,6 +19,35 @@ from .tray import TrayController
 from .web_window import SuperWhisperWindow
 
 logger = logging.getLogger(__name__)
+
+WM_DEVICECHANGE = 0x0219
+
+
+class WindowsDeviceChangeFilter(QAbstractNativeEventFilter, QObject):
+    device_changed = Signal()
+
+    def __init__(self, parent: QObject | None = None):
+        QObject.__init__(self, parent)
+        QAbstractNativeEventFilter.__init__(self)
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(600)
+        self._debounce_timer.timeout.connect(self._on_debounced_change)
+
+    def nativeEventFilter(self, eventType, message) -> tuple[bool, int]:
+        try:
+            if eventType in (b"windows_generic_MSG", b"windows_dispatcher_MSG", "windows_generic_MSG", "windows_dispatcher_MSG"):
+                import ctypes.wintypes
+                msg = ctypes.wintypes.MSG.from_address(int(message))
+                if msg.message == WM_DEVICECHANGE:
+                    self._debounce_timer.start()
+        except Exception:
+            pass
+        return False, 0
+
+    def _on_debounced_change(self) -> None:
+        logger.info("Cambio de dispositivo detectado (WM_DEVICECHANGE). Actualizando audio...")
+        self.device_changed.emit()
 
 
 class DictationQtApp:
@@ -60,9 +91,35 @@ class DictationQtApp:
             open_panel_callback=self.superwhisper_window.show_window,
         )
 
+        if sys.platform.startswith("win"):
+            self.device_filter = WindowsDeviceChangeFilter(self.app)
+            self.device_filter.device_changed.connect(self.on_device_hotplug)
+            self.app.installNativeEventFilter(self.device_filter)
+
         self.poll_timer = QTimer()
         self.poll_timer.timeout.connect(self.process_ui_queue)
         self.poll_timer.start(40)
+
+    def on_device_hotplug(self) -> None:
+        try:
+            refresh_audio_devices()
+            if hasattr(self, "superwhisper_window"):
+                self.superwhisper_window.bridge.notifyDeviceListChanged()
+
+            selected_key = self.settings.audio.input_device_key
+            if selected_key is not None:
+                devices = list_input_devices(force_refresh=False)
+                device_keys = {d.key for d in devices}
+                if selected_key in device_keys:
+                    logger.info("Micrófono configurado disponible tras cambio de hardware: %s", selected_key)
+                    self.runtime.audio_reconnect_event.set()
+                else:
+                    logger.warning("Micrófono configurado desconectado o no encontrado: %s", selected_key)
+            else:
+                # Dispositivo predeterminado del sistema
+                self.runtime.audio_reconnect_event.set()
+        except Exception as e:
+            logger.error("Error procesando evento de cambio de dispositivo de audio: %s", e)
 
     def process_ui_queue(self) -> None:
         try:

@@ -218,7 +218,7 @@ class TrayController:
         self.microphone_menu.addSeparator()
 
         try:
-            devices = list_input_devices()
+            devices = list_input_devices(force_refresh=True)
         except Exception:
             logger.exception("No se pudo listar micrófonos")
             error_action = QAction("Error al listar micrófonos", self.microphone_menu)

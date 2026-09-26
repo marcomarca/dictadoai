@@ -171,13 +171,22 @@ class WebBridge(QObject):
     @Slot(result=str)
     def listAudioDevices(self) -> str:
         try:
-            devices = list_input_devices()
+            devices = list_input_devices(force_refresh=True)
             devices_data = [{"key": d.key, "label": d.label} for d in devices]
             selected_key = self.settings.audio.input_device_key or ""
-            return json.dumps(devices_data, ensure_ascii=False)
+            return json.dumps({"devices": devices_data, "selected_key": selected_key}, ensure_ascii=False)
         except Exception as e:
             logger.error("Error listando dispositivos de audio: %s", e)
-            return "[]"
+            return json.dumps({"devices": [], "selected_key": ""})
+
+    def notifyDeviceListChanged(self) -> None:
+        try:
+            devices = list_input_devices(force_refresh=True)
+            devices_data = [{"key": d.key, "label": d.label} for d in devices]
+            selected_key = self.settings.audio.input_device_key or ""
+            self.deviceListChanged.emit(json.dumps(devices_data, ensure_ascii=False), selected_key)
+        except Exception as e:
+            logger.error("Error notificando cambio de dispositivos: %s", e)
 
     @Slot(str, str)
     def setAudioDevice(self, key: str, label: str) -> None:
@@ -322,9 +331,10 @@ class SuperWhisperWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
-        # Refrescar historial cada vez que se muestra
+        # Refrescar historial y lista de dispositivos cada vez que se muestra
         if hasattr(self, "bridge"):
             self.bridge.notifyHistoryUpdated()
+            self.bridge.notifyDeviceListChanged()
 
     def closeEvent(self, event) -> None:
         # En lugar de destruir la ventana, se oculta al System Tray

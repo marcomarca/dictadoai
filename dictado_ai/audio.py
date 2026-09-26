@@ -62,12 +62,12 @@ class AudioCaptureWorker:
                 input_device_index = None
 
                 if selected_key is not None:
-                    selected_device = find_input_device_by_key(selected_key)
+                    selected_device = find_input_device_by_key(selected_key, force_refresh=True)
                     if selected_device is None:
                         logger.error("Micrófono seleccionado no disponible: %s", selected_label)
                         self.runtime.push_status("[ ERROR AUDIO ]", self.settings.ui.color_paused)
                         self.runtime.push_text(
-                            f"Micrófono no disponible: {selected_label}. Selecciona otro desde el tray."
+                            f"Micrófono no disponible: {selected_label}. Selecciona otro o vuelve a conectarlo."
                         )
                         time.sleep(2.0)
                         continue
