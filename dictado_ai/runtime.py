@@ -76,6 +76,7 @@ class AppRuntime:
     final_queue: "queue.Queue[dict]" = field(default_factory=queue.Queue)
     ui_queue: "queue.Queue[UiMessage]" = field(default_factory=queue.Queue)
     stop_event: threading.Event = field(default_factory=threading.Event)
+    listen_event: threading.Event = field(default_factory=threading.Event)
     audio_reconnect_event: threading.Event = field(default_factory=threading.Event)
 
     def __post_init__(self) -> None:

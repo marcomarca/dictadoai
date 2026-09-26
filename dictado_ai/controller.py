@@ -47,6 +47,7 @@ class DictationController:
         
         self.runtime.state.set_is_listening(state)
         if state:
+            self.runtime.listen_event.set()
             if self.settings.app.auto_pause_media:
                 self.runtime.push_text("Pausando multimedia externa...")
                 paused_targets = self.media_manager.pause_all()
@@ -61,6 +62,7 @@ class DictationController:
             self.runtime.show_active_idle_ui()
             logger.info("Dictado activado")
         else:
+            self.runtime.listen_event.clear()
             self._beep(500, 180)
             logger.info("Dictado pausado")
             
@@ -265,7 +267,7 @@ class DictationController:
         groq_model: GroqAsrModel | None = None,
     ) -> None:
         if self.runtime.state.is_listening():
-            self.runtime.state.set_is_listening(False)
+            self.set_dictation_state(False)
 
         if provider == AsrProvider.GROQ_API:
             new_asr = replace(self.settings.asr, provider=provider)
@@ -299,7 +301,7 @@ class DictationController:
         )
 
         if self.runtime.state.is_listening():
-            self.runtime.state.set_is_listening(False)
+            self.set_dictation_state(False)
 
         self.runtime.audio_reconnect_event.set()
         self.runtime.push_status("[ MICRÓFONO ]", self.settings.ui.color_init)
