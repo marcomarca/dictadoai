@@ -38,6 +38,11 @@ class DictationMode(str, Enum):
     TOGGLE = "ALTERNAR (CLIC)"
     PUSH_TO_TALK = "MANTENER (PTT)"
 
+
+class RecordingWindowStyle(str, Enum):
+    CLASSIC = "classic"
+    MINI = "mini"
+
 @dataclass(frozen=True)
 class ApiKeys:
     groq: str = ""
@@ -340,6 +345,7 @@ class AppConfig:
     auto_pause_media: bool = True
     media_key_fallback_enabled: bool = True
     dictation_mode: DictationMode = DictationMode.TOGGLE
+    recording_window_style: RecordingWindowStyle = RecordingWindowStyle.MINI
     typing_speed_wpm: int = 60
     save_debug_audio: bool = False
 
@@ -387,6 +393,7 @@ class Settings:
                 "auto_pause_media": self.app.auto_pause_media,
                 "media_key_fallback_enabled": self.app.media_key_fallback_enabled,
                 "dictation_mode": self.app.dictation_mode.value,
+                "recording_window_style": self.app.recording_window_style.value,
                 "hotkey": self.app.hotkey,
                 "typing_speed_wpm": self.app.typing_speed_wpm,
                 "save_debug_audio": self.app.save_debug_audio,
@@ -438,6 +445,12 @@ class Settings:
                 for mode in DictationMode:
                     if mode.value == val or mode.name == val:
                         app_updates["dictation_mode"] = mode
+                        break
+            if "recording_window_style" in app_data:
+                val = app_data["recording_window_style"]
+                for style in RecordingWindowStyle:
+                    if style.value == val or style.name == val:
+                        app_updates["recording_window_style"] = style
                         break
             if app_updates:
                 self.app = replace(self.app, **app_updates)

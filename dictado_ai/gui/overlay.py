@@ -11,11 +11,12 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
+    QStackedLayout,
     QVBoxLayout,
     QWidget,
 )
 
-from ..config import Settings
+from ..config import Settings, RecordingWindowStyle
 from .theme import get_app_icon, get_status_badge_pixmap
 from .widgets import LevelMeter
 
@@ -36,6 +37,7 @@ class DictationOverlay(QWidget):
             self.setWindowIcon(app_icon)
 
         self._build_ui()
+        self.update_style()
         self._apply_window_flags()
         self.hide()
 
@@ -52,24 +54,25 @@ class DictationOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
     def _build_ui(self) -> None:
-        # Dejar margen para la sombra perimetral
-        self.setFixedSize(self.theme.popup_width + 24, self.theme.popup_height + 24)
-        root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
+        self.root_layout = QVBoxLayout(self)
+        self.root_layout.setContentsMargins(10, 10, 10, 10)
+        self.root_layout.setSpacing(0)
 
-        self.card = QFrame(self)
-        self.card.setObjectName("card")
+        # -------------------------------------------------------------
+        # 1. CLASSIC CARD (Full Details)
+        # -------------------------------------------------------------
+        self.classic_card = QFrame(self)
+        self.classic_card.setObjectName("classicCard")
 
-        # Sombra difusa moderna estilo macOS / Windows 11 Fluent
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(24)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        shadow.setOffset(0, 6)
-        self.card.setGraphicsEffect(shadow)
+        classic_shadow = QGraphicsDropShadowEffect(self)
+        classic_shadow.setBlurRadius(24)
+        classic_shadow.setColor(QColor(0, 0, 0, 160))
+        classic_shadow.setOffset(0, 6)
+        self.classic_card.setGraphicsEffect(classic_shadow)
 
-        card_layout = QVBoxLayout(self.card)
-        card_layout.setContentsMargins(16, 14, 16, 14)
-        card_layout.setSpacing(8)
+        classic_layout = QVBoxLayout(self.classic_card)
+        classic_layout.setContentsMargins(16, 14, 16, 14)
+        classic_layout.setSpacing(8)
 
         # Header: Icono oficial de marca + Título/Subtítulo + Hotkey chip
         header = QHBoxLayout()
@@ -102,7 +105,7 @@ class DictationOverlay(QWidget):
         header.addWidget(self.hotkey_chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # Barra de visualización de audio moderna (ecualizador simétrico)
-        self.level_meter = LevelMeter(self.theme)
+        self.level_meter = LevelMeter(self.theme, bar_count=32)
 
         # Texto en tiempo real / borrador transcrito
         self.draft_label = QLabel("Escuchando tu voz...")
@@ -117,11 +120,83 @@ class DictationOverlay(QWidget):
         self.footer_label.setObjectName("footerLabel")
         self.footer_label.setStyleSheet(f"color: {self.theme.color_text_muted}; font-size: 11px;")
 
-        card_layout.addLayout(header)
-        card_layout.addWidget(self.level_meter)
-        card_layout.addWidget(self.draft_label, 1)
-        card_layout.addWidget(self.footer_label)
-        root.addWidget(self.card)
+        classic_layout.addLayout(header)
+        classic_layout.addWidget(self.level_meter)
+        classic_layout.addWidget(self.draft_label, 1)
+        classic_layout.addWidget(self.footer_label)
+
+        # -------------------------------------------------------------
+        # 2. MINI CARD (Compact Pill Widget with Post-Dictation WPM)
+        # -------------------------------------------------------------
+        self.mini_card = QFrame(self)
+        self.mini_card.setObjectName("miniCard")
+
+        mini_shadow = QGraphicsDropShadowEffect(self)
+        mini_shadow.setBlurRadius(16)
+        mini_shadow.setColor(QColor(0, 0, 0, 150))
+        mini_shadow.setOffset(0, 4)
+        self.mini_card.setGraphicsEffect(mini_shadow)
+
+        mini_layout = QHBoxLayout(self.mini_card)
+        mini_layout.setContentsMargins(12, 6, 14, 6)
+        mini_layout.setSpacing(10)
+
+        # Punto indicador de estado circular
+        self.mini_mic_dot = QLabel()
+        self.mini_mic_dot.setFixedSize(12, 12)
+        self._update_mini_dot_color(self.theme.color_init)
+
+        # Contenedor dinámico Stacked (Grabando vs Resultado WPM)
+        self.mini_stack_container = QWidget()
+        self.mini_stack = QStackedLayout(self.mini_stack_container)
+        self.mini_stack.setContentsMargins(0, 0, 0, 0)
+
+        # Página 0: En Vivo (Ecualizador compacto + etiqueta)
+        self.mini_live_widget = QWidget()
+        mini_live_layout = QHBoxLayout(self.mini_live_widget)
+        mini_live_layout.setContentsMargins(0, 0, 0, 0)
+        mini_live_layout.setSpacing(8)
+
+        self.mini_level_meter = LevelMeter(self.theme, bar_count=10)
+        self.mini_level_meter.setFixedSize(56, 14)
+
+        self.mini_status_text = QLabel("Dictado")
+        self.mini_status_text.setObjectName("miniStatusText")
+        self.mini_status_text.setStyleSheet(f"color: {self.theme.color_text_primary}; font-weight: 600; font-size: 12px;")
+
+        mini_live_layout.addWidget(self.mini_level_meter, 0, Qt.AlignmentFlag.AlignVCenter)
+        mini_live_layout.addWidget(self.mini_status_text, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        # Página 1: Post-Grabación (WPM Speed Tag)
+        self.mini_wpm_widget = QWidget()
+        mini_wpm_layout = QHBoxLayout(self.mini_wpm_widget)
+        mini_wpm_layout.setContentsMargins(0, 0, 0, 0)
+        mini_wpm_layout.setSpacing(4)
+
+        self.mini_wpm_label = QLabel("⚡ 145 WPM")
+        self.mini_wpm_label.setObjectName("miniWpmLabel")
+        self.mini_wpm_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mini_wpm_label.setStyleSheet(f"color: {self.theme.color_active}; font-weight: 700; font-size: 13px; letter-spacing: 0.5px;")
+
+        mini_wpm_layout.addWidget(self.mini_wpm_label, 1, Qt.AlignmentFlag.AlignCenter)
+
+        self.mini_stack.addWidget(self.mini_live_widget)
+        self.mini_stack.addWidget(self.mini_wpm_widget)
+        self.mini_stack.setCurrentWidget(self.mini_live_widget)
+
+        mini_layout.addWidget(self.mini_mic_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        mini_layout.addWidget(self.mini_stack_container, 1, Qt.AlignmentFlag.AlignVCenter)
+
+        # -------------------------------------------------------------
+        # Root Stack Setup
+        # -------------------------------------------------------------
+        self.root_stack_widget = QWidget()
+        self.root_stack = QStackedLayout(self.root_stack_widget)
+        self.root_stack.setContentsMargins(0, 0, 0, 0)
+        self.root_stack.addWidget(self.classic_card)
+        self.root_stack.addWidget(self.mini_card)
+
+        self.root_layout.addWidget(self.root_stack_widget)
 
         self.setStyleSheet(
             f"""
@@ -129,7 +204,7 @@ class DictationOverlay(QWidget):
                 background: transparent;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
             }}
-            QFrame#card {{
+            QFrame#classicCard {{
                 background: qlineargradient(
                     x1:0, y1:0, x2:0, y2:1,
                     stop:0 {self.theme.color_card},
@@ -137,6 +212,15 @@ class DictationOverlay(QWidget):
                 );
                 border: 1px solid {self.theme.color_border};
                 border-radius: {self.theme.popup_corner_radius}px;
+            }}
+            QFrame#miniCard {{
+                background: qlineargradient(
+                    x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(15, 23, 42, 0.95),
+                    stop:1 rgba(30, 41, 59, 0.95)
+                );
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 18px;
             }}
             QLabel#hotkeyChip {{
                 color: #E2E8F0;
@@ -150,6 +234,21 @@ class DictationOverlay(QWidget):
             }}
             """
         )
+
+    def _update_mini_dot_color(self, color_hex: str) -> None:
+        self.mini_mic_dot.setStyleSheet(
+            f"background-color: {color_hex}; border-radius: 6px; min-width: 12px; max-width: 12px; min-height: 12px; max-height: 12px;"
+        )
+
+    def update_style(self) -> None:
+        style = self.settings.app.recording_window_style
+        if style == RecordingWindowStyle.MINI:
+            self.root_stack.setCurrentWidget(self.mini_card)
+            self.setFixedSize(200, 56)
+        else:
+            self.root_stack.setCurrentWidget(self.classic_card)
+            self.setFixedSize(self.theme.popup_width + 24, self.theme.popup_height + 24)
+        self.reposition()
 
     def reposition(self) -> None:
         if self._user_moved:
@@ -184,10 +283,21 @@ class DictationOverlay(QWidget):
         if not badge_pixmap.isNull():
             self.mic_badge.setPixmap(badge_pixmap)
 
-        if "[ GRABANDO" in text or "[ ERROR" in text:
+        self._update_mini_dot_color(accent)
+
+        if "[ GRABANDO" in text:
+            self.mini_status_text.setText("Grabando")
+            self.mini_stack.setCurrentWidget(self.mini_live_widget)
             self.clear_stats()
-        elif "[ PAUSADO" in text and time.time() >= self.force_preview_until:
+        elif "[ PROCESANDO" in text or "[ MEJORANDO" in text or "[ BUSCANDO" in text:
+            self.mini_status_text.setText("Mejorando...")
+        elif "[ ERROR" in text:
+            self.mini_status_text.setText("Error")
             self.clear_stats()
+        elif "[ PAUSADO" in text:
+            self.mini_status_text.setText("Pausado")
+            if time.time() >= self.force_preview_until:
+                self.clear_stats()
 
     def set_info(self, text: str) -> None:
         self.subtitle_label.setText(text)
@@ -202,6 +312,7 @@ class DictationOverlay(QWidget):
 
     def set_level(self, level: float) -> None:
         self.level_meter.set_level(level)
+        self.mini_level_meter.set_level(level)
 
     def set_stats(self, wpm: float, time_saved_sec: float) -> None:
         if time_saved_sec < 60:
@@ -212,10 +323,15 @@ class DictationOverlay(QWidget):
         stats_text = f"⚡ {int(wpm)} WPM  ·  ⏱ Ahorro: {time_str}"
         self.footer_label.setText(stats_text)
         self.footer_label.setStyleSheet(f"color: {self.theme.color_active}; font-weight: 600; font-size: 11px;")
+
+        # En modo Mini, el widget transiciona a mostrar la velocidad WPM
+        self.mini_wpm_label.setText(f"⚡ {int(wpm)} WPM")
+        self.mini_stack.setCurrentWidget(self.mini_wpm_widget)
         self.preview(3.5)
 
     def clear_stats(self) -> None:
         self.footer_label.setText("")
+        self.mini_stack.setCurrentWidget(self.mini_live_widget)
 
     def preview(self, seconds: float = 4.0) -> None:
         self.force_preview_until = time.time() + seconds
@@ -247,3 +363,4 @@ class DictationOverlay(QWidget):
         else:
             if is_vis:
                 self.hide()
+

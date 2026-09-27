@@ -135,9 +135,18 @@ def build() -> None:
         print(f"Limpiando directorio temporal {build_dir}...")
         shutil.rmtree(build_dir, ignore_errors=True)
 
+    # 8. Generar paquete ZIP comprimido listo para distribución
+    zip_base = dist_dir / "DictadoAI-windows-x64"
+    print(f"Generando archivo ZIP de distribución: {zip_base}.zip ...")
+    if Path(f"{zip_base}.zip").exists():
+        os.remove(f"{zip_base}.zip")
+    shutil.make_archive(str(zip_base), "zip", root_dir=str(dist_dir), base_dir="DictadoAI")
+    print(f"Archivo ZIP creado exitosamente en: {zip_base}.zip")
+
     print("=" * 60)
     print(f"¡Empaquetado finalizado con éxito!")
     print(f"Ejecutable disponible en: {output_bundle_dir / 'DictadoAI.exe'}")
+    print(f"Archivo ZIP para compartir: {zip_base}.zip")
     print("=" * 60)
 
 

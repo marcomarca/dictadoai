@@ -18,6 +18,7 @@ from dictado_ai.config import (
     AsrDevice,
     DictationMode,
     GroqAsrModel,
+    RecordingWindowStyle,
 )
 
 
@@ -53,6 +54,7 @@ class TestConfigPersistence(unittest.TestCase):
             auto_copy_clipboard=True,
             auto_pause_media=False,
             dictation_mode=DictationMode.PUSH_TO_TALK,
+            recording_window_style=RecordingWindowStyle.CLASSIC,
             hotkey="ctrl+shift+d",
             typing_speed_wpm=95,
         )
@@ -78,6 +80,7 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertTrue(data["app"]["auto_copy_clipboard"])
         self.assertFalse(data["app"]["auto_pause_media"])
         self.assertEqual(data["app"]["dictation_mode"], DictationMode.PUSH_TO_TALK.value)
+        self.assertEqual(data["app"]["recording_window_style"], RecordingWindowStyle.CLASSIC.value)
         self.assertEqual(data["app"]["hotkey"], "ctrl+shift+d")
         self.assertEqual(data["app"]["typing_speed_wpm"], 95)
         self.assertEqual(data["audio"]["input_device_key"], "mic-uuid-123")
@@ -94,6 +97,7 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertTrue(fresh_settings.app.auto_copy_clipboard)
         self.assertFalse(fresh_settings.app.auto_pause_media)
         self.assertEqual(fresh_settings.app.dictation_mode, DictationMode.PUSH_TO_TALK)
+        self.assertEqual(fresh_settings.app.recording_window_style, RecordingWindowStyle.CLASSIC)
         self.assertEqual(fresh_settings.app.hotkey, "ctrl+shift+d")
         self.assertEqual(fresh_settings.app.typing_speed_wpm, 95)
         self.assertEqual(fresh_settings.audio.input_device_key, "mic-uuid-123")

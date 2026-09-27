@@ -75,6 +75,7 @@ class DictationQtApp:
             self.history_manager,
             toggle_dictation_cb=toggle_callback,
             change_device_cb=change_input_device_callback,
+            style_changed_cb=self.overlay.update_style,
             vocabulary_manager=self.vocabulary_manager,
             modes_manager=self.modes_manager,
         )

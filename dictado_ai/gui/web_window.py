@@ -15,6 +15,7 @@ from PySide6.QtWebEngineCore import QWebEngineSettings
 
 from ..audio_devices import list_input_devices
 from ..autostart import is_autostart_enabled, set_autostart
+from ..config import RecordingWindowStyle
 from ..history import HistoryManager
 from ..hotkeys import send_paste_command, set_clipboard_text, ClipboardGuard
 from ..modes import ModesManager
@@ -45,6 +46,7 @@ class WebBridge(QObject):
         window: SuperWhisperWindow,
         toggle_dictation_cb: Callable[[], None] | None = None,
         change_device_cb: Callable[[str | None, str], None] | None = None,
+        style_changed_cb: Callable[[], None] | None = None,
         vocabulary_manager: VocabularyManager | None = None,
         modes_manager: ModesManager | None = None,
     ):
@@ -56,6 +58,7 @@ class WebBridge(QObject):
         self.window = window
         self.toggle_dictation_cb = toggle_dictation_cb
         self.change_device_cb = change_device_cb
+        self.style_changed_cb = style_changed_cb
 
     # --- Slots de Vocabulario ---
     @Slot(result=str)
@@ -209,6 +212,7 @@ class WebBridge(QObject):
                 "hotkey": self.settings.app.hotkey,
                 "provider": self.settings.active_provider.value,
                 "dictation_mode": self.settings.app.dictation_mode.value,
+                "recording_window_style": self.settings.app.recording_window_style.value,
             }
             return json.dumps(data, ensure_ascii=False)
         except Exception as e:
@@ -230,6 +234,19 @@ class WebBridge(QObject):
             logger.info("Ajuste %s actualizado a %s", key, value)
         except Exception as e:
             logger.error("Error guardando ajuste %s: %s", key, e)
+
+    @Slot(str)
+    def setRecordingWindowStyle(self, style: str) -> None:
+        try:
+            from dataclasses import replace
+            valid_style = RecordingWindowStyle.MINI if style.lower() == "mini" else RecordingWindowStyle.CLASSIC
+            self.settings.app = replace(self.settings.app, recording_window_style=valid_style)
+            self.settings.save()
+            if self.style_changed_cb:
+                self.style_changed_cb()
+            logger.info("Estilo de ventana de grabación actualizado a: %s", valid_style.value)
+        except Exception as e:
+            logger.error("Error guardando estilo de ventana de grabación: %s", e)
 
     # --- Slots de Control de Dictado ---
     @Slot()
@@ -269,6 +286,7 @@ class SuperWhisperWindow(QMainWindow):
         history_manager: HistoryManager,
         toggle_dictation_cb: Callable[[], None] | None = None,
         change_device_cb: Callable[[str | None, str], None] | None = None,
+        style_changed_cb: Callable[[], None] | None = None,
         vocabulary_manager: VocabularyManager | None = None,
         modes_manager: ModesManager | None = None,
     ):
@@ -277,6 +295,7 @@ class SuperWhisperWindow(QMainWindow):
         self.history_manager = history_manager
         self.vocabulary_manager = vocabulary_manager or VocabularyManager(settings.paths.vocabulary_file)
         self.modes_manager = modes_manager or ModesManager(settings.paths.modes_file)
+        self.style_changed_cb = style_changed_cb
 
         self.setWindowTitle("DictadoAI")
         self.resize(1020, 690)
@@ -311,6 +330,7 @@ class SuperWhisperWindow(QMainWindow):
             self,
             toggle_dictation_cb,
             change_device_cb,
+            style_changed_cb=self.style_changed_cb,
             vocabulary_manager=self.vocabulary_manager,
             modes_manager=self.modes_manager,
         )

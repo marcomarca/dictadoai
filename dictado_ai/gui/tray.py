@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from ..audio_devices import list_input_devices
 from ..autostart import is_autostart_enabled, set_autostart
-from ..config import Settings, LlmProvider, AsrDevice, AsrProvider, DictationMode, GroqAsrModel
+from ..config import Settings, LlmProvider, AsrDevice, AsrProvider, DictationMode, GroqAsrModel, RecordingWindowStyle
 from .overlay import DictationOverlay
 from .theme import get_tray_icon
 
@@ -111,6 +111,24 @@ class TrayController:
             self.mode_group.addAction(action)
             self.mode_menu.addAction(action)
 
+        self.style_menu = QMenu("Ventana de grabación")
+        self.style_group = QActionGroup(self.style_menu)
+        self.style_group.setExclusive(True)
+
+        mini_action = QAction("Modo Mini (Cápsula + WPM)", self.style_menu)
+        mini_action.setCheckable(True)
+        mini_action.setChecked(settings.app.recording_window_style == RecordingWindowStyle.MINI)
+        mini_action.triggered.connect(lambda: self.set_recording_style(RecordingWindowStyle.MINI))
+        self.style_group.addAction(mini_action)
+        self.style_menu.addAction(mini_action)
+
+        classic_action = QAction("Modo Clásico (Detallado)", self.style_menu)
+        classic_action.setCheckable(True)
+        classic_action.setChecked(settings.app.recording_window_style == RecordingWindowStyle.CLASSIC)
+        classic_action.triggered.connect(lambda: self.set_recording_style(RecordingWindowStyle.CLASSIC))
+        self.style_group.addAction(classic_action)
+        self.style_menu.addAction(classic_action)
+
         self.links_menu = QMenu("Obtener API Keys...")
         links = {
             "Groq": "https://console.groq.com/keys",
@@ -163,6 +181,7 @@ class TrayController:
         self.menu.addMenu(self.provider_menu)
         self.menu.addMenu(self.asr_device_menu)
         self.menu.addMenu(self.mode_menu)
+        self.menu.addMenu(self.style_menu)
         self.menu.addMenu(self.links_menu)
         self.menu.addAction(self.open_env_action)
         if self.download_model_callback:
@@ -203,6 +222,16 @@ class TrayController:
             self.change_mode_callback()
         except Exception:
             logger.exception("No se pudo actualizar el modo de activación")
+
+    def set_recording_style(self, style: RecordingWindowStyle) -> None:
+        try:
+            from dataclasses import replace
+            self.settings.app = replace(self.settings.app, recording_window_style=style)
+            self.settings.save()
+            self.overlay.update_style()
+            logger.info("Estilo de ventana de grabación cambiado a: %s", style.value)
+        except Exception:
+            logger.exception("No se pudo actualizar el estilo de ventana de grabación")
 
     def rebuild_microphone_menu(self) -> None:
         self.microphone_menu.clear()

@@ -379,6 +379,12 @@
         if (autoPauseEl) autoPauseEl.checked = !!cfg.auto_pause_media;
         if (hotkeyChipHome && cfg.hotkey) hotkeyChipHome.textContent = cfg.hotkey.toUpperCase();
         if (hotkeyChipCfg && cfg.hotkey) hotkeyChipCfg.textContent = cfg.hotkey.toUpperCase();
+
+        const styleClassicEl = document.getElementById('styleCardClassic');
+        const styleMiniEl = document.getElementById('styleCardMini');
+        const isMini = cfg.recording_window_style === 'mini';
+        if (styleClassicEl) styleClassicEl.classList.toggle('selected', !isMini);
+        if (styleMiniEl) styleMiniEl.classList.toggle('selected', isMini);
       } catch (err) {
         console.error('Error cargando configuración:', err);
       }
@@ -396,6 +402,26 @@
       });
     }
   });
+
+  // Recording Window Style Selector
+  const styleCardClassic = document.getElementById('styleCardClassic');
+  const styleCardMini = document.getElementById('styleCardMini');
+
+  if (styleCardClassic) {
+    styleCardClassic.addEventListener('click', () => {
+      styleCardClassic.classList.add('selected');
+      if (styleCardMini) styleCardMini.classList.remove('selected');
+      if (bridge) bridge.setRecordingWindowStyle('classic');
+    });
+  }
+
+  if (styleCardMini) {
+    styleCardMini.addEventListener('click', () => {
+      styleCardMini.classList.add('selected');
+      if (styleCardClassic) styleCardClassic.classList.remove('selected');
+      if (bridge) bridge.setRecordingWindowStyle('mini');
+    });
+  }
 
   // Theme toggle
   if (cfgThemeDark) {
