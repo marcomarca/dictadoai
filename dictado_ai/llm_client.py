@@ -79,13 +79,27 @@ class LlmClient:
 
         from groq import Groq
         client = Groq(api_key=api_key)
-        res = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0
-        )
-        corrected = res.choices[0].message.content.strip()
-        return self._clean_quotes(corrected) or original_text
+        for model_name in (
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b",
+            "openai/gpt-oss-120b",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
+        ):
+            try:
+                res = client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                corrected = res.choices[0].message.content.strip()
+                cleaned = self._clean_quotes(corrected)
+                if cleaned:
+                    return cleaned
+            except Exception as e:
+                logger.warning("Groq chat falló con %s: %s", model_name, e)
+
+        return original_text
 
     def _call_gemini(self, prompt: str, original_text: str) -> str:
         # ==========================================
@@ -100,9 +114,9 @@ class LlmClient:
         client = genai.Client(api_key=api_key)
 
         for model_name in (
-            "gemini-3.1-flash-lite",
-            "gemini-3-flash",
-            "gemini-2.5-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
         ):
             try:
                 res = client.models.generate_content(

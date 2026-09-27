@@ -34,8 +34,10 @@ def refresh_audio_devices() -> None:
     """
     with _portaudio_lock:
         try:
-            sd._terminate()
-            sd._initialize()
+            try:
+                sd._terminate()
+            finally:
+                sd._initialize()
             logger.debug("PortAudio reinicializado para re-enumerar dispositivos de audio")
         except Exception as e:
             logger.warning("Error al reinicializar PortAudio: %s", e)

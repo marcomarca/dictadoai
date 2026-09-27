@@ -37,12 +37,13 @@ class WindowsDeviceChangeFilter(QAbstractNativeEventFilter, QObject):
     def nativeEventFilter(self, eventType, message) -> tuple[bool, int]:
         try:
             if eventType in (b"windows_generic_MSG", b"windows_dispatcher_MSG", "windows_generic_MSG", "windows_dispatcher_MSG"):
-                msg_addr = int(message)
-                if msg_addr:
-                    import ctypes.wintypes
-                    msg = ctypes.wintypes.MSG.from_address(msg_addr)
-                    if msg.message == WM_DEVICECHANGE:
-                        self._debounce_timer.start()
+                if message is not None:
+                    msg_addr = int(message)
+                    if msg_addr > 0x10000:
+                        import ctypes.wintypes
+                        msg = ctypes.wintypes.MSG.from_address(msg_addr)
+                        if msg.message == WM_DEVICECHANGE:
+                            self._debounce_timer.start()
         except Exception:
             pass
         return False, 0

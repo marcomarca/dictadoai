@@ -68,7 +68,7 @@ class AudioCaptureWorker:
             input_device_index: int | None = None
 
             if selected_key is not None:
-                selected_device = find_input_device_by_key(selected_key, force_refresh=True)
+                selected_device = find_input_device_by_key(selected_key, force_refresh=False)
                 if selected_device is None:
                     logger.warning(
                         "Microfono seleccionado no disponible: %s. Fallback automático a Sistema predeterminado.",

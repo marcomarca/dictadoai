@@ -193,6 +193,9 @@ class DictationController:
             self.runtime.push_status("[ ERROR ]", self.settings.ui.color_paused)
             self.runtime.push_text("GROQ_API_KEY no configurada en .env")
             logger.error("GROQ_API_KEY no configurada para ASR online")
+            if not self.hotkeys:
+                self.setup_hotkeys()
+                self._start_workers()
             return
 
         try:

@@ -174,7 +174,7 @@ class WebBridge(QObject):
     @Slot(result=str)
     def listAudioDevices(self) -> str:
         try:
-            devices = list_input_devices(force_refresh=True)
+            devices = list_input_devices(force_refresh=False)
             devices_data = [{"key": d.key, "label": d.label} for d in devices]
             selected_key = self.settings.audio.input_device_key or ""
             return json.dumps({"devices": devices_data, "selected_key": selected_key}, ensure_ascii=False)
@@ -184,7 +184,7 @@ class WebBridge(QObject):
 
     def notifyDeviceListChanged(self) -> None:
         try:
-            devices = list_input_devices(force_refresh=True)
+            devices = list_input_devices(force_refresh=False)
             devices_data = [{"key": d.key, "label": d.label} for d in devices]
             selected_key = self.settings.audio.input_device_key or ""
             self.deviceListChanged.emit(json.dumps(devices_data, ensure_ascii=False), selected_key)
