@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+import math
 import sys
 import threading
 from collections import Counter
 from dataclasses import dataclass
 
+import numpy as np
 import sounddevice as sd
+from scipy.signal import resample_poly
 
 logger = logging.getLogger(__name__)
 
@@ -169,3 +172,85 @@ def resolve_input_device_index(selected_key: str | None, force_refresh: bool = F
         return None
 
     return device.index
+
+
+def negotiate_input_device_params(
+    device_index: int | None,
+    target_sr: int = 16000,
+    channels: int = 1,
+) -> tuple[int, int]:
+    """
+    Determina la frecuencia de muestreo y número de canales compatibles con el dispositivo.
+    Prioriza target_sr (16000 Hz). Si el driver de Windows WASAPI lo rechaza, negocia la tasa
+    nativa del dispositivo (p. ej. 48000 Hz, 44100 Hz) para remuestreo posterior.
+    """
+    with _portaudio_lock:
+        default_sr = 16000
+        max_channels = 1
+        if device_index is not None:
+            try:
+                dev_info = sd.query_devices(device_index)
+                default_sr = int(dev_info.get("default_samplerate", 48000))
+                max_channels = max(1, int(dev_info.get("max_input_channels", 1)))
+            except Exception as e:
+                logger.warning("Error al consultar detalles de dispositivo %s: %s", device_index, e)
+
+        # Probar primero 1 canal, y si falla y el dispositivo tiene más canales, probar con max_channels
+        candidate_channels = [1]
+        if max_channels > 1 and 1 not in candidate_channels:
+            candidate_channels.append(max_channels)
+
+        # Tasas candidatas en orden de preferencia: target_sr primero, luego tasa nativa del dispositivo, luego estándares
+        candidate_rates: list[int] = []
+        for r in [target_sr, default_sr, 48000, 44100, 32000, 24000, 22050, 16000, 8000]:
+            if r > 0 and r not in candidate_rates:
+                candidate_rates.append(r)
+
+        for ch in candidate_channels:
+            for rate in candidate_rates:
+                try:
+                    sd.check_input_settings(
+                        device=device_index,
+                        samplerate=rate,
+                        channels=ch,
+                        dtype="float32",
+                    )
+                    logger.debug(
+                        "negotiate_input_device_params: device=%s negociado a sr=%d, channels=%d",
+                        device_index,
+                        rate,
+                        ch,
+                    )
+                    return rate, ch
+                except Exception:
+                    continue
+
+        # Si check_input_settings falló en todos, retornar la mejor estimación
+        fallback_sr = default_sr if default_sr > 0 else 16000
+        logger.warning(
+            "No se pudo validar check_input_settings para device=%s. Usando fallback sr=%d, channels=1",
+            device_index,
+            fallback_sr,
+        )
+        return fallback_sr, 1
+
+
+def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int = 16000) -> np.ndarray:
+    """
+    Remuestrea un array de audio float32 a la tasa target_sr (16000 Hz) usando filtrado polifase
+    anti-aliasing de scipy.
+    """
+    if orig_sr == target_sr or len(audio) == 0:
+        return audio.astype(np.float32, copy=False)
+
+    gcd = math.gcd(target_sr, orig_sr)
+    up = target_sr // gcd
+    down = orig_sr // gcd
+
+    try:
+        resampled = resample_poly(audio, up, down).astype(np.float32, copy=False)
+        return resampled
+    except Exception as e:
+        logger.error("Error al remuestrear audio de %d Hz a %d Hz: %s", orig_sr, target_sr, e)
+        return audio.astype(np.float32, copy=False)
+

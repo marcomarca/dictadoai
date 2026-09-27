@@ -37,10 +37,12 @@ class WindowsDeviceChangeFilter(QAbstractNativeEventFilter, QObject):
     def nativeEventFilter(self, eventType, message) -> tuple[bool, int]:
         try:
             if eventType in (b"windows_generic_MSG", b"windows_dispatcher_MSG", "windows_generic_MSG", "windows_dispatcher_MSG"):
-                import ctypes.wintypes
-                msg = ctypes.wintypes.MSG.from_address(int(message))
-                if msg.message == WM_DEVICECHANGE:
-                    self._debounce_timer.start()
+                msg_addr = int(message)
+                if msg_addr:
+                    import ctypes.wintypes
+                    msg = ctypes.wintypes.MSG.from_address(msg_addr)
+                    if msg.message == WM_DEVICECHANGE:
+                        self._debounce_timer.start()
         except Exception:
             pass
         return False, 0
@@ -103,7 +105,9 @@ class DictationQtApp:
 
     def on_device_hotplug(self) -> None:
         try:
-            refresh_audio_devices()
+            if not self.runtime.state.is_listening():
+                refresh_audio_devices()
+
             if hasattr(self, "superwhisper_window"):
                 self.superwhisper_window.bridge.notifyDeviceListChanged()
 
@@ -115,12 +119,28 @@ class DictationQtApp:
                     logger.info("Micrófono configurado disponible tras cambio de hardware: %s", selected_key)
                     self.runtime.audio_reconnect_event.set()
                 else:
-                    logger.warning("Micrófono configurado desconectado o no encontrado: %s", selected_key)
+                    logger.warning(
+                        "Micrófono configurado desconectado: %s. Reasignando automáticamente a Sistema predeterminado.",
+                        selected_key,
+                    )
+                    from dataclasses import replace
+                    self.settings.audio = replace(
+                        self.settings.audio,
+                        input_device_key=None,
+                        input_device_label="Sistema predeterminado",
+                    )
+                    self.settings.save()
+                    self.runtime.audio_reconnect_event.set()
+                    self.runtime.push_status("[ MICRÓFONO REASIGNADO ]", self.settings.ui.color_busy)
+                    self.runtime.push_text("Micrófono desconectado. Se reasignó al micrófono predeterminado.")
+                    if hasattr(self, "tray"):
+                        self.tray.rebuild_microphone_menu()
             else:
                 # Dispositivo predeterminado del sistema
                 self.runtime.audio_reconnect_event.set()
         except Exception as e:
             logger.error("Error procesando evento de cambio de dispositivo de audio: %s", e)
+
 
     def process_ui_queue(self) -> None:
         try:
