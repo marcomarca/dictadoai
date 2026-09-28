@@ -175,6 +175,7 @@ class InferenceWorker:
             
             # Pequeño retardo para asegurar que la UI procese las estadísticas antes de la transición
             time.sleep(0.05)
+            self.runtime.state.set_is_processing(False)
             
             if self.runtime.state.is_listening():
                 self.runtime.show_active_idle_ui()

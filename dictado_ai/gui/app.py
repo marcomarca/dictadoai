@@ -71,7 +71,11 @@ class DictationQtApp:
         self.history_manager = HistoryManager(self.settings.paths.history_file)
         self.vocabulary_manager = VocabularyManager(self.settings.paths.vocabulary_file)
         self.modes_manager = ModesManager(self.settings.paths.modes_file)
-        self.overlay = DictationOverlay(settings, is_listening_supplier=self.runtime.state.is_listening)
+        self.overlay = DictationOverlay(
+            settings,
+            is_listening_supplier=self.runtime.state.is_listening,
+            is_processing_supplier=self.runtime.state.is_processing,
+        )
         
         self.superwhisper_window = SuperWhisperWindow(
             settings,

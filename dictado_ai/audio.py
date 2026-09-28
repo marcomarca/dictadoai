@@ -204,8 +204,10 @@ class AudioCaptureWorker:
                 else:
                     logger.info("AudioCaptureWorker: grabacion descartada por ser muy corta (%d samples)", len(audio_data))
                     self.runtime.state.set_live_utterance_id(None)
+                    self.runtime.state.set_is_processing(False)
                     self.runtime.show_paused_ui()
             else:
                 self.runtime.state.set_live_utterance_id(None)
+                self.runtime.state.set_is_processing(False)
                 self.runtime.show_paused_ui()
 

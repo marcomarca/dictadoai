@@ -47,6 +47,7 @@ class DictationController:
         
         self.runtime.state.set_is_listening(state)
         if state:
+            self.runtime.state.set_is_processing(False)
             self.runtime.listen_event.set()
             if self.settings.app.auto_pause_media:
                 self.runtime.push_text("Pausando multimedia externa...")
@@ -64,7 +65,10 @@ class DictationController:
         else:
             self.runtime.listen_event.clear()
             self._beep(500, 180)
-            logger.info("Dictado pausado")
+            self.runtime.state.set_is_processing(True)
+            self.runtime.push_status("[ PROCESANDO ]", self.settings.ui.color_busy)
+            self.runtime.push_text("Transformando audio a texto...")
+            logger.info("Dictado pausado, iniciando procesamiento")
             
             if self._paused_media_targets:
                 self.runtime.push_text("Reanudando multimedia previa...")

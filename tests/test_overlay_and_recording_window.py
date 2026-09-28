@@ -95,6 +95,28 @@ class TestOverlayAndRecordingWindow(unittest.TestCase):
         self.assertEqual(overlay.current_status, "[ PAUSADO ]")
         self.assertEqual(overlay.mini_status_text.text(), "Pausado")
 
+    def test_overlay_remains_visible_during_processing(self):
+        is_listening = False
+        is_processing = True
+        overlay = DictationOverlay(
+            self.settings,
+            is_listening_supplier=lambda: is_listening,
+            is_processing_supplier=lambda: is_processing,
+        )
+
+        # Cuando deja de escuchar pero está procesando, debe permanecer visible
+        overlay.set_status("[ PROCESANDO ]", self.settings.ui.color_busy)
+        self.assertTrue(overlay.should_be_visible())
+
+        # En estado mejorando
+        overlay.set_status("[ MEJORANDO ]", self.settings.ui.color_busy)
+        self.assertTrue(overlay.should_be_visible())
+
+        # Cuando finaliza el procesamiento y no hay preview activa, se oculta
+        is_processing = False
+        overlay.set_status("[ PAUSADO ]", self.settings.ui.color_paused)
+        self.assertFalse(overlay.should_be_visible())
+
     def test_overlay_processing_and_improving_statuses(self):
         from dataclasses import replace
         self.settings.app = replace(self.settings.app, recording_window_style=RecordingWindowStyle.MINI)

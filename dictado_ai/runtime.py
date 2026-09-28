@@ -15,6 +15,7 @@ class RuntimeState:
     def __init__(self, max_context_segments: int):
         self._lock = threading.Lock()
         self._is_listening = False
+        self._is_processing = False
         self._current_live_utterance_id: Optional[int] = None
         self._utterance_counter = 0
         self._context_history: deque[str] = deque(maxlen=max_context_segments)
@@ -27,6 +28,14 @@ class RuntimeState:
     def set_is_listening(self, value: bool) -> None:
         with self._lock:
             self._is_listening = value
+
+    def is_processing(self) -> bool:
+        with self._lock:
+            return self._is_processing
+
+    def set_is_processing(self, value: bool) -> None:
+        with self._lock:
+            self._is_processing = value
 
     def toggle_listening(self) -> bool:
         with self._lock:

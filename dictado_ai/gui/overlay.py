@@ -22,11 +22,17 @@ from .widgets import LevelMeter
 
 
 class DictationOverlay(QWidget):
-    def __init__(self, settings: Settings, is_listening_supplier: Callable[[], bool]):
+    def __init__(
+        self,
+        settings: Settings,
+        is_listening_supplier: Callable[[], bool],
+        is_processing_supplier: Callable[[], bool] | None = None,
+    ):
         super().__init__()
         self.settings = settings
         self.theme = settings.ui
         self.is_listening_supplier = is_listening_supplier
+        self.is_processing_supplier = is_processing_supplier
         self.force_preview_until = 0.0
         self.current_status = "[ INICIANDO SISTEMA ]"
         self.current_status_color = self.theme.color_init
@@ -355,7 +361,11 @@ class DictationOverlay(QWidget):
         self.show_overlay()
 
     def should_be_visible(self) -> bool:
-        if self.is_listening_supplier():
+        if self.is_listening_supplier and self.is_listening_supplier():
+            return True
+        if self.is_processing_supplier and self.is_processing_supplier():
+            return True
+        if any(token in self.current_status for token in ("[ PROCESANDO", "[ MEJORANDO", "[ TRANSCRIBIENDO", "[ DESCARGANDO")):
             return True
         if time.time() < self.force_preview_until:
             return True
