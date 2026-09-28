@@ -58,11 +58,11 @@ def get_badge_pixmap(name: str = "app.png", size: int = 40, dpr: float = 2.0) ->
 def get_status_badge_pixmap(status_text: str, size: int = 40, dpr: float = 2.0) -> QPixmap:
     """Retorna el icono de marca en alta resolución (256x256) correspondiente al estado actual."""
     st = (status_text or "").upper()
-    if "[ GRABANDO" in st or "[ ACTIVO" in st:
+    if "[ GRABANDO" in st or "[ ACTIVO" in st or "[ LISTO" in st or "[ COMPLETADO" in st:
         pm = get_badge_pixmap("active_green.png", size, dpr)
         if not pm.isNull():
             return pm
-    elif "[ PROCESANDO" in st or "[ DESCARGANDO" in st or "[ LLM" in st or "[ TRANSCRIBIENDO" in st:
+    elif "[ PROCESANDO" in st or "[ DESCARGANDO" in st or "[ LLM" in st or "[ TRANSCRIBIENDO" in st or "[ MEJORANDO" in st:
         pm = get_badge_pixmap("busy_orange.png", size, dpr)
         if not pm.isNull():
             return pm
@@ -83,7 +83,7 @@ def get_status_badge_pixmap(status_text: str, size: int = 40, dpr: float = 2.0) 
     app_pm = get_badge_pixmap("app.png", size, dpr)
     if not app_pm.isNull():
         return app_pm
-    return create_microphone_pixmap(size, "#10B981")
+    return create_microphone_pixmap(size, "#30D158")
 
 
 def create_microphone_pixmap(size: int, accent: str) -> QPixmap:
@@ -95,20 +95,20 @@ def create_microphone_pixmap(size: int, accent: str) -> QPixmap:
 
     rect = QRect(0, 0, size, size)
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor("#0E1628"))
+    painter.setBrush(QColor("#121214"))
     painter.drawEllipse(rect.adjusted(2, 2, -2, -2))
 
     painter.setBrush(QColor(accent))
     painter.drawEllipse(rect.adjusted(8, 8, -8, -8))
 
-    painter.setBrush(QColor("#F8FAFC"))
+    painter.setBrush(QColor("#F5F5F7"))
     capsule_w = int(size * 0.22)
     capsule_h = int(size * 0.28)
     capsule_x = (size - capsule_w) // 2
     capsule_y = int(size * 0.22)
     painter.drawRoundedRect(capsule_x, capsule_y, capsule_w, capsule_h, capsule_w / 2, capsule_w / 2)
 
-    stem_pen = QPen(QColor("#F8FAFC"), max(2, size // 18), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+    stem_pen = QPen(QColor("#F5F5F7"), max(2, size // 18), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
     painter.setPen(stem_pen)
     painter.drawLine(size // 2, capsule_y + capsule_h, size // 2, int(size * 0.66))
     painter.drawArc(int(size * 0.31), int(size * 0.33), int(size * 0.38), int(size * 0.40), 200 * 16, 140 * 16)
@@ -126,7 +126,7 @@ def create_tray_icon(color: str) -> QIcon:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor("#0A0F1F"))
+    painter.setBrush(QColor("#121214"))
     painter.drawRoundedRect(QRect(4, 4, size - 8, size - 8), 18, 18)
 
     painter.setBrush(QColor(color))

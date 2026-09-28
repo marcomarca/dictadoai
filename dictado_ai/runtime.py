@@ -82,8 +82,6 @@ class AppRuntime:
     def __post_init__(self) -> None:
         self.state = RuntimeState(max_context_segments=self.settings.asr.max_context_segments)
 
-
-
     def push_status(self, text: str, color: str) -> None:
         self.ui_queue.put(UiMessage(kind="status", text=text, color=color))
 
@@ -105,6 +103,11 @@ class AppRuntime:
 
     def push_preview(self, duration: float) -> None:
         self.ui_queue.put(UiMessage(kind="preview", duration=duration))
+
+    def show_completed_ui(self) -> None:
+        self.push_status("[ LISTO ]", self.settings.ui.color_active)
+        self.push_draft("")
+        self.push_level(0.0)
 
     def show_paused_ui(self) -> None:
         self.push_status("[ PAUSADO ]", self.settings.ui.color_paused)

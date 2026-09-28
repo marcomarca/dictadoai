@@ -55,6 +55,7 @@ class InferenceWorker:
             text_original_debug = ""
             text = ""
             stats_debug = {}
+            inference_successful = False
 
             if result:
                 raw_asr, text = result
@@ -69,6 +70,7 @@ class InferenceWorker:
                 if active_mode.is_raw:
                     logger.info("Modo Raw activo: omitiendo llamada a LLM")
                 elif self.settings.active_provider != LlmProvider.DISABLED and text and text.strip():
+                    self.runtime.push_status("[ MEJORANDO ]", self.settings.ui.color_busy)
                     self.runtime.push_text(f"Mejorando con {self.settings.active_provider.value} ({active_mode.name})...")
                     hints = self.vocabulary_manager.get_prompt_hints()
                     text = self.llm_client.correct_text(
@@ -90,16 +92,11 @@ class InferenceWorker:
                     self.runtime.push_preview(2.0)
                 else:
                     # Inyectar el texto final mediante pegado rápido (Ctrl+V)
-                    # Si el auto-copy está desactivado, usamos el ClipboardGuard para restaurar el contenido previo
-                    # y marcamos el clip para que no aparezca en el historial (Win+V)
                     must_restore = not self.settings.app.auto_copy_clipboard
                     text_to_inject = cleaned_text + " "
                     
                     with ClipboardGuard(enabled=must_restore):
-                        # exclude_from_history=True siempre durante la inyección sintética para no polucionar Win+V
                         set_clipboard_text(text_to_inject, exclude_from_history=True)
-                        # Deja que el portapapeles quede visible para la app destino y evita
-                        # carreras contra el hotkey usado para detener la grabación.
                         time.sleep(0.06)
                         paste_ok = send_paste_command()
                     
@@ -133,7 +130,6 @@ class InferenceWorker:
                         self.runtime.push_text(f"Pegado enviado: {cleaned_text}")
                     else:
                         self.runtime.push_text(f"Pegado falló (guardado en portapapeles e historial): {cleaned_text}")
-                        # Fallback obligatorio: asegurar que el texto quede en el portapapeles para pegado manual
                         self.runtime.push_clipboard(cleaned_text)
                     
                     if self.settings.app.auto_copy_clipboard:
@@ -155,10 +151,10 @@ class InferenceWorker:
                                     word_count, duration_sec, wpm, time_saved_sec)
 
                     logger.info("Texto confirmado y guardado en state: %s", cleaned_text)
+                    inference_successful = True
             else:
                 self.runtime.push_text("Segmento descartado por el modelo.")
                 logger.info("InferenceWorker: Segmento final descartado (texto nulo/vacío) para utterance_id=%d", utterance_id)
-                # Mantener el popup visible un momento para mostrar el estado [ PAUSADO ]
                 self.runtime.push_preview(2.0)
 
             self.runtime.push_draft("")
@@ -177,11 +173,13 @@ class InferenceWorker:
                 except Exception as e:
                     logger.error("Error al guardar datos de debug: %s", e)
             
-            # Pequeño retardo para asegurar que la UI procese las estadísticas antes de la pausa
+            # Pequeño retardo para asegurar que la UI procese las estadísticas antes de la transición
             time.sleep(0.05)
             
             if self.runtime.state.is_listening():
                 self.runtime.show_active_idle_ui()
+            elif inference_successful:
+                self.runtime.show_completed_ui()
             else:
                 self.runtime.show_paused_ui()
                 
@@ -197,8 +195,6 @@ class InferenceWorker:
         # Guardar Audio WAV
         wav_path = debug_dir / f"{base_name}.wav"
         try:
-            # Asegurar que esté en int16 para compatibilidad si fuera necesario, 
-            # pero whisper-cpp suele trabajar en float32. wavfile maneja float32 bien.
             wavfile.write(wav_path, self.settings.audio.sample_rate, audio_data)
         except Exception as e:
             logger.error("No se pudo escribir el archivo WAV de debug: %s", e)

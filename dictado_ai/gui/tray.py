@@ -332,11 +332,11 @@ class TrayController:
         upper_status = status_text.upper()
         if any(token in upper_status for token in ("ERROR", "FALLO")):
             self.tray.setIcon(self.icon_error)
-        elif any(token in upper_status for token in ("PROCESANDO", "BUSCANDO")):
+        elif any(token in upper_status for token in ("PROCESANDO", "BUSCANDO", "MEJORANDO")):
             self.tray.setIcon(self.icon_busy)
         elif any(token in upper_status for token in ("INICIANDO", "CALENTANDO", "MICRÓFONO", "MICROFONO", "ONLINE", "CARGANDO")):
             self.tray.setIcon(self.icon_init)
-        elif self.is_listening_supplier() or "GRABANDO" in upper_status:
+        elif self.is_listening_supplier() or "GRABANDO" in upper_status or "LISTO" in upper_status or "COMPLETADO" in upper_status:
             self.tray.setIcon(self.icon_active)
         else:
             self.tray.setIcon(self.icon_paused)

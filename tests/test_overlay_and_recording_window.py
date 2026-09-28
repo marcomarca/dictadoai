@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from PySide6.QtWidgets import QApplication
 
-from dictado_ai.config import Settings, PathsConfig, AppConfig, RecordingWindowStyle
+from dictado_ai.config import Settings, PathsConfig, AppConfig, RecordingWindowStyle, UiTheme
 from dictado_ai.gui.overlay import DictationOverlay
 from dictado_ai.gui.web_window import WebBridge
 from dictado_ai.history import HistoryManager
@@ -26,15 +26,23 @@ class TestOverlayAndRecordingWindow(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_apple_dark_theme_defaults(self):
+        theme = UiTheme()
+        self.assertEqual(theme.color_card, "#121214")
+        self.assertEqual(theme.color_active, "#30D158")
+        self.assertEqual(theme.color_busy, "#FF9F0A")
+        self.assertEqual(theme.color_paused, "#FF453A")
+        self.assertEqual(theme.popup_width, 440)
+        self.assertEqual(theme.popup_height, 124)
+
     def test_overlay_mini_and_classic_styles(self):
-        # Starts in Mini mode by default (or configured)
         from dataclasses import replace
         self.settings.app = replace(self.settings.app, recording_window_style=RecordingWindowStyle.MINI)
         overlay = DictationOverlay(self.settings, is_listening_supplier=lambda: False)
 
-        # In Mini mode, fixed size is compact (200x56)
-        self.assertEqual(overlay.width(), 200)
-        self.assertEqual(overlay.height(), 56)
+        # In Mini mode, fixed size is snug (180x42) with no transparent dead-zone
+        self.assertEqual(overlay.width(), 180)
+        self.assertEqual(overlay.height(), 42)
         self.assertEqual(overlay.root_stack.currentWidget(), overlay.mini_card)
 
         # Switch to Classic mode
@@ -42,8 +50,8 @@ class TestOverlayAndRecordingWindow(unittest.TestCase):
         overlay.update_style()
 
         self.assertEqual(overlay.root_stack.currentWidget(), overlay.classic_card)
-        self.assertEqual(overlay.width(), self.settings.ui.popup_width + 24)
-        self.assertEqual(overlay.height(), self.settings.ui.popup_height + 24)
+        self.assertEqual(overlay.width(), self.settings.ui.popup_width + 12)
+        self.assertEqual(overlay.height(), self.settings.ui.popup_height + 12)
 
     def test_overlay_mini_wpm_transition(self):
         from dataclasses import replace
@@ -51,18 +59,55 @@ class TestOverlayAndRecordingWindow(unittest.TestCase):
         overlay = DictationOverlay(self.settings, is_listening_supplier=lambda: True)
 
         # When recording, mini shows live widget (equalizer + text)
-        overlay.set_status("[ GRABANDO ]", "#10B981")
+        overlay.set_status("[ GRABANDO ]", "#30D158")
         self.assertEqual(overlay.mini_stack.currentWidget(), overlay.mini_live_widget)
         self.assertEqual(overlay.mini_status_text.text(), "Grabando")
 
-        # When stats arrive, mini transitions to WPM widget
+        # When stats arrive, mini transitions to WPM widget and ensures green accent
         overlay.set_stats(wpm=162.0, time_saved_sec=45.0)
         self.assertEqual(overlay.mini_stack.currentWidget(), overlay.mini_wpm_widget)
         self.assertIn("162 WPM", overlay.mini_wpm_label.text())
 
         # Next recording resets back to live widget
-        overlay.set_status("[ GRABANDO ]", "#10B981")
+        overlay.set_status("[ GRABANDO ]", "#30D158")
         self.assertEqual(overlay.mini_stack.currentWidget(), overlay.mini_live_widget)
+
+    def test_overlay_status_synchronization_while_listening(self):
+        from dataclasses import replace
+        self.settings.app = replace(self.settings.app, recording_window_style=RecordingWindowStyle.MINI)
+        
+        # Simula que el usuario está grabando activamente
+        is_listening = True
+        overlay = DictationOverlay(self.settings, is_listening_supplier=lambda: is_listening)
+        
+        overlay.set_status("[ GRABANDO ]", self.settings.ui.color_active)
+        self.assertEqual(overlay.current_status, "[ GRABANDO ]")
+        self.assertEqual(overlay.mini_status_text.text(), "Grabando")
+
+        # Si llega un mensaje rezagado de [ PAUSADO ] de una inferencia anterior, la guarda lo anula
+        overlay.set_status("[ PAUSADO ]", self.settings.ui.color_paused)
+        self.assertEqual(overlay.current_status, "[ GRABANDO ]")
+        self.assertEqual(overlay.mini_status_text.text(), "Grabando")
+
+        # Cuando el usuario efectivamente deja de grabar, [ PAUSADO ] sí se aplica
+        is_listening = False
+        overlay.set_status("[ PAUSADO ]", self.settings.ui.color_paused)
+        self.assertEqual(overlay.current_status, "[ PAUSADO ]")
+        self.assertEqual(overlay.mini_status_text.text(), "Pausado")
+
+    def test_overlay_processing_and_improving_statuses(self):
+        from dataclasses import replace
+        self.settings.app = replace(self.settings.app, recording_window_style=RecordingWindowStyle.MINI)
+        overlay = DictationOverlay(self.settings, is_listening_supplier=lambda: False)
+
+        overlay.set_status("[ PROCESANDO ]", self.settings.ui.color_busy)
+        self.assertEqual(overlay.mini_status_text.text(), "Procesando...")
+
+        overlay.set_status("[ MEJORANDO ]", self.settings.ui.color_busy)
+        self.assertEqual(overlay.mini_status_text.text(), "Mejorando...")
+
+        overlay.set_status("[ LISTO ]", self.settings.ui.color_active)
+        self.assertEqual(overlay.mini_status_text.text(), "Listo")
 
     def test_web_bridge_recording_window_style_slot(self):
         history_mgr = HistoryManager(self.temp_path / "history.jsonl")
